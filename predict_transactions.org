@@ -1,0 +1,152 @@
+* Project Description + Kaggle Link 
+The competition main page is [[https://www.kaggle.com/c/santander-customer-transaction-prediction/overview][Kaggle: Santander Customer Transaction Predictions]]
+
+We are told:
+
+"In this challenge, we invite Kagglers to help us identify which customers will make a specific transaction in the future, irrespective of the amount of money transacted. The data provided for this competition has the same structure as the real data we have available to solve this problem."
+
+We are provided with an anonymized dataset containing numeric feature variables, the binary target column, and a string ID_code column. The task is to predict the value of target column in the test set.
+
+I liked this as a toy model competition because the task and data are relatively simple, but the description of the data is quite lacking, so I have to think.
+* Preprocessing                                                                 
+** Import data and modules needed for 
+Import the data. At this stage, we don't even import the unlabelled test data used for the competition, because we need labels to evaluate our model. So instead we'll split our training data as train/validation/test.
+
+#+BEGIN_SRC python :session :results silent 
+import pandas as pd
+import numpy as np
+from matplotlib import pyplot as plt
+from sklearn.model_selection import train_test_split
+import seaborn as sns
+#+END_SRC
+
+
+#+BEGIN_SRC python :session
+raw_dataframe = pd.read_csv('train.csv')
+#+END_SRC
+
+#+RESULTS:
+
+** Explore the data 
+
+*** Look at the data and summary statistics 
+#+BEGIN_SRC python :session
+raw_dataframe.head()
+#+END_SRC
+
+#+RESULTS:
+:    ID_code  target    var_0   var_1    var_2   var_3    var_4   var_5   var_6    var_7   var_8   var_9  var_10  ...  var_187  var_188  var_189  var_190  var_191  var_192  var_193  var_194  var_195  var_196  var_197  var_198  var_199
+: 0  train_0       0   8.9255 -6.7863  11.9081  5.0930  11.4607 -9.2834  5.1187  18.6266 -4.9200  5.7470  2.9252  ... -19.7159  17.5743   0.5857   4.4354   3.9642   3.1364   1.6910  18.5227  -2.3978   7.8784   8.5635  12.7803  -1.0914
+: 1  train_1       0  11.5006 -4.1473  13.8588  5.3890  12.3622  7.0433  5.6208  16.5338  3.1468  8.0851 -0.4032  ... -15.9319  13.3175  -0.3566   7.6421   7.7214   2.5837  10.9516  15.4305   2.0339   8.1267   8.7889  18.3560   1.9518
+: 2  train_2       0   8.6093 -2.7457  12.0805  7.8928  10.5825 -9.0837  6.9427  14.6155 -4.9193  5.9525 -0.3249  ...  -6.2660  10.1934  -0.8417   2.9057   9.7905   1.6704   1.6858  21.6042   3.1417  -6.5213   8.2675  14.7222   0.3965
+: 3  train_3       0  11.0604 -2.1518   8.9522  7.1957  12.5846 -1.8361  5.8428  14.9250 -5.8609  8.2450  2.3061  ... -12.8279  12.4124   1.8489   4.4666   4.7433   0.7178   1.4214  23.0347  -1.2706  -2.9275  10.2922  17.9697  -8.9996
+: 4  train_4       0   9.8369 -1.4834  12.8746  6.6375  12.2772  2.4486  5.9405  19.2514  6.2654  7.6784 -9.4458  ...   5.9270  16.0201  -0.2829  -1.4905   9.5214  -0.1508   9.1942  13.2876  -1.5121   3.9267   9.5031  17.9974  -8.8104
+: 
+: [5 rows x 202 columns]
+ 
+And some statistics about the data
+
+#+BEGIN_SRC python :session
+raw_dataframe.describe()
+#+END_SRC
+
+#+RESULTS:
+#+begin_example
+              target          var_0          var_1          var_2          var_3          var_4          var_5  ...        var_193        var_194        var_195        var_196        var_197        var_198        var_199
+count  200000.000000  200000.000000  200000.000000  200000.000000  200000.000000  200000.000000  200000.000000  ...  200000.000000  200000.000000  200000.000000  200000.000000  200000.000000  200000.000000  200000.000000
+mean        0.100490      10.679914      -1.627622      10.715192       6.796529      11.078333      -5.065317  ...       3.331774      17.993784      -0.142088       2.303335       8.908158      15.870720      -3.326537
+std         0.300653       3.040051       4.050044       2.640894       2.043319       1.623150       7.863267  ...       3.992030       3.135162       1.429372       5.454369       0.921625       3.010945      10.438015
+min         0.000000       0.408400     -15.043400       2.117100      -0.040200       5.074800     -32.562600  ...     -11.783400       8.694400      -5.261000     -14.209600       5.960600       6.299300     -38.852800
+25%         0.000000       8.453850      -4.740025       8.722475       5.254075       9.883175     -11.200350  ...       0.584600      15.629800      -1.170700      -1.946925       8.252800      13.829700     -11.208475
+50%         0.000000      10.524750      -1.608050      10.580000       6.825000      11.108250      -4.833150  ...       3.396350      17.957950      -0.172700       2.408900       8.888200      15.934050      -2.819550
+75%         0.000000      12.758200       1.358625      12.516700       8.324100      12.261125       0.924800  ...       6.205800      20.396525       0.829600       6.556725       9.593300      18.064725       4.836800
+max         1.000000      20.315000      10.376800      19.353000      13.188300      16.671400      17.251600  ...      18.281800      27.928800       4.272900      18.321500      12.000400      26.079100      28.500700
+
+[8 rows x 201 columns]
+#+end_example
+
+We can note some things so far (~10% of binary targets are 1, rest 0, so we have an imbalanced classification problem, we can note approximate upper and lower bounds on the data, rough idea of the width of the distributions, all numeric data so no need to process categorical variables). 
+
+*** Which naive features correlate with the target and with each other?
+
+#+BEGIN_SRC python :session :results file
+# pick out some features to draw correlations, and prepend 'target'
+some_features = [f'var_{i}' for i in range (10)]
+some_features.insert(0,'target')
+
+# draw correlation heatmap
+raw_correlations = raw_dataframe[some_features].corr()
+plt.figure(figsize=(10,10))
+sns.heatmap(raw_correlations, annot=True)
+plt.savefig('raw_correlations.png')
+plt.close()
+'raw_correlations.png'
+#+END_SRC
+
+#+RESULTS:
+[[file:raw_correlations.png]]
+
+
+
+
+*** Plot some histograms 
+
+Plot a histogram of a column:
+
+#+BEGIN_SRC python :session :results file
+train_df['var_196'].hist()
+plt.savefig('hist.png')
+plt.close()
+'hist.png'
+#+END_SRC
+
+#+RESULTS:
+[[file:hist.png]]
+ 
+Let's look at what all rows with target value 1 look like
+
+#+BEGIN_SRC python :session
+  raw_dataframe.loc[raw_dataframe['target']==1]
+#+END_SRC
+
+#+RESULTS:
+#+begin_example
+             ID_code  target    var_0   var_1    var_2   var_3    var_4    var_5   var_6    var_7   var_8   var_9  ...  var_188  var_189  var_190  var_191  var_192  var_193  var_194  var_195  var_196  var_197  var_198  var_199
+13          train_13       1  16.3699  1.5934  16.7395  7.3330  12.1450   5.9004  4.8222  20.9729  1.1064  8.6978  ...  11.9586  -0.5899   7.4002   7.4031   4.3989   4.0978  17.3638  -1.3022   9.6846   9.0419  15.6064 -10.8529
+29          train_29       1   5.3301 -2.6064  13.1913  3.1193   6.6483  -6.5659  5.9064  15.2341  1.2915  9.1168  ...  18.6375   0.1734   5.9215   7.9676   2.3405   1.1482  23.2168  -2.0105   3.7600   9.4513  17.4105 -14.6897
+63          train_63       1   7.7072  0.0183   9.9974  8.3524   9.2886 -13.3627  6.0425  10.1108  1.3999  6.6710  ...  10.0679   1.9046   1.5832   5.0039   3.8814   7.4241  21.4844  -0.8297  -3.0468   7.5790  15.7685   5.4769
+65          train_65       1  10.5358 -2.5439   8.7394  6.7548  14.4099  -3.8724  5.1584  15.8381  5.8204  9.0358  ...  10.2542   1.5517   4.6648   6.4227   3.4025  -4.0882  14.1174  -0.2472   5.3847   8.6949  15.1340   3.8449
+71          train_71       1   6.7547  2.5973  14.2141  8.3514   7.4942  -1.3055  4.2336  15.0243 -1.8922  9.1282  ...  13.8773  -0.0899   1.4677   3.5935   2.0013   1.5777  18.2820  -4.3408   6.8869   9.3567  18.9013  13.3447
+...              ...     ...      ...     ...      ...     ...      ...      ...     ...      ...     ...     ...  ...      ...      ...      ...      ...      ...      ...      ...      ...      ...      ...      ...      ...
+199966  train_199966       1  13.5797  2.5526   6.0512  5.2730  12.2182  -3.4048  7.3623  17.8372 -3.5604  8.8837  ...  20.7649  -0.4363   3.9023   7.9986   0.5213   2.3442  14.5510  -1.1530   8.9883   8.3389   9.5440   4.2493
+199976  train_199976       1   7.9663 -2.8485   9.0919  7.3298   9.6690 -16.7872  4.5094  12.4351 -0.0113  8.5394  ...  20.1372   0.3380  10.7930   4.3876   3.7257   7.7038  14.7384   0.1561   1.5794   8.4627  14.3604  -1.6688
+199981  train_199981       1  12.8140  0.6386  14.1657  7.1044   8.9365  -0.3274  6.5949  14.6078 -1.0373  8.8974  ...   7.0611   1.5463   4.8208   4.9010   2.2513   0.7308  14.7155   1.1464   5.5158   8.6519  16.0341   7.3809
+199986  train_199986       1  12.0298 -8.7800   7.7071  7.4015   9.2305 -16.2174  5.9064  17.9268  3.6489  7.3970  ...   9.3059  -1.0691  16.7461   3.1249  -0.3943   8.4059  14.3367   3.0991   4.3853   8.8019  15.0031  -0.3659
+199990  train_199990       1  14.1475  1.8568  11.0066  3.6779  12.1944 -16.5936  5.3217  14.8508  3.3377  6.1650  ...  16.0983   0.8156  -6.4708   4.7287   1.9034   7.2324  20.6047   1.7170  -4.0032   9.1627  13.8077  -1.9646
+
+[20098 rows x 202 columns]
+#+end_example
+
+Plot a histogram across features for a given row that has target value 1.
+
+#+BEGIN_SRC python :session :results file 
+  raw_dataframe.iloc[13,2:].hist()
+
+  # We need to save the figure to display inline in org mode. We also should use plt.close() so that we can respawn new different images without issues.
+  plt.savefig('hist1.png')
+  plt.close()
+  'hist1.png'
+#+END_SRC
+
+#+RESULTS:
+[[file:hist1.png]]
+
+
+
+** 
+
+** Preprocessing
+* TODO Build a Linear Model
+* TODO Random Forest and Boosted Trees
+* TODO Some standard DL
+* TODO LSTM? 
