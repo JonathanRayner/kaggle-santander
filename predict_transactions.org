@@ -18,8 +18,8 @@ import numpy as np
 from matplotlib import pyplot as plt
 from sklearn.model_selection import train_test_split
 import seaborn as sns
-# import tensorflow as tf
-# from tensorflow import keras
+import tensorflow as tf
+from tensorflow import keras
 #+END_SRC
 
 
@@ -45,15 +45,6 @@ test_features = np.array(test_dataframe)
 #+END_SRC
 
 #+RESULTS:
-: Python 3.8.1 (default, Jan 22 2020, 06:38:00) 
-: [GCC 9.2.0] on linux
-: Type "help", "copyright", "credits" or "license" for more information.
-: Traceback (most recent call last):
-:   File "<stdin>", line 1, in <module>
-:   File "/tmp/python-ivFuzd", line 1, in <module>
-:     raw_dataframe = pd.read_csv('train.csv')
-: NameError: name 'pd' is not defined
-: python.el: native completion setup loaded
 
 ** Explore the data 
 *** Look at the data and summary statistics 
@@ -409,7 +400,7 @@ from sklearn.tree import export_graphviz
 
 #+BEGIN_SRC python :session :results output :async
 # set up model parameters - for a start we can train a single small tree, with no probabilistic sample (no bootstrap), and tell it to use all of our cores.
-rf = RandomForestClassifier(n_estimators=10, max_depth=15, max_features="sqrt", class_weight={0:1,1:9}, n_jobs=-1)
+rf = RandomForestClassifier(n_estimators=100, max_depth=15, max_features="sqrt", n_jobs=7)
 
 # Train the model on training data
 rf.fit(train_features, train_labels)
@@ -428,22 +419,23 @@ auc = roc_auc_score(y_true=validation_labels, y_score=predictions[:,1])
 # n_estimators=100, max_depth=25 , max_features="sqrt": 0.819, 2min 
 # n_estimators=100, max_depth=15 , max_features="sqrt", class_weight={0:1,1:9}: 0.757, 2min 
 # n_estimators=300, max_depth=15 , max_features="sqrt", class_weight={0:1,1:9}: 0.793, 3min 
+# n_estimators=500, max_depth=25, max_features="sqrt", class_weight={0:1,1:9}, n_jobs=7: 0.822, 6min
+# n_estimators=1000, max_depth=42, max_features="sqrt", class_weight={0:1,1:9}, n_jobs=7: 0.835, 15min
+# n_estimators=2000, max_depth=42, max_features="sqrt", class_weight={0:1,1:9}, n_jobs=7: 0.837, 23min
+# n_estimators=1000, max_depth=42, max_features=40, class_weight={0:1,1:9}, n_jobs=7: 0.809, 35min
+# n_estimators=2000, max_depth=25, max_features=40, class_weight={0:1,1:9}, n_jobs=7: 0.815, 55min
 print(auc)
 #+END_SRC
 
 #+RESULTS:
-: 0.6297095305938086
+: 0.8147160562178322
 
 Let's draw the simple tree
 
-#+BEGIN_SRC python :session :results output
-export_graphviz(rf.estimators_[0], out_file=dotfile)
+#+BEGIN_SRC python :# export_graphviz(rf.estimators_[0], out_file=dotfile)
+session :results output
 #+END_SRC
 
-#+RESULTS:
-: Traceback (most recent call last):
-:   File "<stdin>", line 1, in <module>
-: NameError: name 'dotfile' is not defined
 
 ** What if we scale our data? 
 #+BEGIN_SRC python :session :results output
@@ -492,5 +484,11 @@ Could purposefully samply less of the negative examples.
 
 
 ** Boosted trees in tensorflow 
+
+* TODO Feature Engineering
+
+- Polynomial features (sklearn) -> correlation with targets
+- Identify most import features
+- PCA then 1+2?
 
 * TODO LSTM? 
