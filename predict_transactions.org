@@ -8,27 +8,54 @@ We are told:
 We are provided with an anonymized dataset containing numeric feature variables, the binary target column, and a string ID_code column. The task is to predict the value of target column in the test set.
 
 I liked this as a toy model competition because the task and data are relatively simple, but the description of the data is quite lacking, so I have to think.
-* Preprocessing                                                                 
-** Import data and modules needed for 
+* Preprocessing
+** Import data and modules, split into train/test/validation  
 Import the data. At this stage, we don't even import the unlabelled test data used for the competition, because we need labels to evaluate our model. So instead we'll split our training data as train/validation/test.
 
-#+BEGIN_SRC python :session :results silent 
+#+BEGIN_SRC python :session :results silent :async 
 import pandas as pd
 import numpy as np
 from matplotlib import pyplot as plt
 from sklearn.model_selection import train_test_split
 import seaborn as sns
+# import tensorflow as tf
+# from tensorflow import keras
 #+END_SRC
 
 
-#+BEGIN_SRC python :session
+#+BEGIN_SRC python :session :results output :async 
 raw_dataframe = pd.read_csv('train.csv')
+
+# The ID_code column contains no information, so we remove it
+raw_dataframe.pop('ID_code')
+
+# Shuffle and split the data into train/validation/test dataframes
+train_dataframe, test_dataframe = train_test_split(raw_dataframe, test_size=0.2)
+train_dataframe, validation_dataframe = train_test_split(train_dataframe, test_size=0.2)
+
+# Form np arrays of labels and features.
+train_labels = np.array(train_dataframe.pop('target'))
+validation_labels = np.array(validation_dataframe.pop('target'))
+test_labels = np.array(test_dataframe.pop('target'))
+
+train_features = np.array(train_dataframe)
+validation_features = np.array(validation_dataframe)
+test_features = np.array(test_dataframe)
+
 #+END_SRC
 
 #+RESULTS:
+: Python 3.8.1 (default, Jan 22 2020, 06:38:00) 
+: [GCC 9.2.0] on linux
+: Type "help", "copyright", "credits" or "license" for more information.
+: Traceback (most recent call last):
+:   File "<stdin>", line 1, in <module>
+:   File "/tmp/python-ivFuzd", line 1, in <module>
+:     raw_dataframe = pd.read_csv('train.csv')
+: NameError: name 'pd' is not defined
+: python.el: native completion setup loaded
 
 ** Explore the data 
-
 *** Look at the data and summary statistics 
 #+BEGIN_SRC python :session
 raw_dataframe.head()
@@ -86,8 +113,7 @@ plt.close()
 #+RESULTS:
 [[file:raw_correlations.png]]
 
-
-
+We don't notice any strong linear correlations, so we need to do some feature engineering/avoid linear models
 
 *** Plot some histograms 
 
@@ -141,12 +167,330 @@ Plot a histogram across features for a given row that has target value 1.
 #+RESULTS:
 [[file:hist1.png]]
 
-
-
-** 
-
 ** Preprocessing
-* TODO Build a Linear Model
-* TODO Random Forest and Boosted Trees
-* TODO Some standard DL
+None yet. 
+* DONE Basic Neural Net model 
+CLOSED: [2020-01-29 Wed 20:01]
+** No class weights 
+
+Let's follow https://www.tensorflow.org/tutorials/structured_data/imbalanced_data to implement a basic Neural Net in Tensorflow. We'll use a single layer for benchmarking and optimize later. Most of the code is copy-pasted from the tutorial. 
+
+Define the model and metrics
+
+#+BEGIN_SRC python :session :results output
+  METRICS = [
+      keras.metrics.TruePositives(name='tp'),
+      keras.metrics.FalsePositives(name='fp'),
+      keras.metrics.TrueNegatives(name='tn'),
+      keras.metrics.FalseNegatives(name='fn'),
+      keras.metrics.BinaryAccuracy(name='accuracy'),
+      keras.metrics.Precision(name='precision'),
+      keras.metrics.Recall(name='recall'),
+      keras.metrics.AUC(name='auc'),
+  ]
+
+  # Note the option to use bias initialization, see http://karpathy.github.io/2019/04/25/recipe/#2-set-up-the-end-to-end-trainingevaluation-skeleton--get-dumb-baselines
+  # We modify the tutorial to allow for different numbers of hidden units
+  def make_model(metrics = METRICS, output_bias=None, hidden_units = 16):
+      if output_bias is not None:
+          output_bias = tf.keras.initializers.Constant(output_bias)
+      model = keras.Sequential([
+          keras.layers.Dense(hidden_units, activation='relu',
+                            input_shape=(train_features.shape[-1],)),
+          keras.layers.Dropout(0.2),
+          keras.layers.Dense(1, activation='sigmoid',
+                            bias_initializer=output_bias)
+        ])
+
+
+      model.compile(
+          optimizer=keras.optimizers.Adam(lr=1e-3),
+          loss=keras.losses.BinaryCrossentropy(),
+          metrics=metrics)
+      return model
+#+END_SRC
+
+#+RESULTS:
+
+Build the model
+
+#+BEGIN_SRC python :session :results output
+EPOCHS = 100
+BATCH_SIZE = 2048
+
+early_stopping = tf.keras.callbacks.EarlyStopping(
+    monitor='val_auc', 
+    verbose=1,
+    patience=10,
+    mode='max',
+    restore_best_weights=True)
+
+model = make_model()
+model.summary()
+
+#+END_SRC
+
+
+#+RESULTS:
+#+begin_example
+Model: "sequential_8"
+_________________________________________________________________
+Layer (type)                 Output Shape              Param #   
+=================================================================
+dense_24 (Dense)             (None, 16)                3216      
+_________________________________________________________________
+dropout_16 (Dropout)         (None, 16)                0         
+_________________________________________________________________
+dense_25 (Dense)             (None, 1)                 17        
+=================================================================
+Total params: 3,233
+Trainable params: 3,233
+Non-trainable params: 0
+_________________________________________________________________
+#+end_example
+
+Test run with a small amount of data
+
+#+BEGIN_SRC python :session :results output
+model.predict(train_features[:10])
+#+END_SRC
+
+#+RESULTS:
+#+begin_example
+2020-01-26 21:39:16.948460: I tensorflow/stream_executor/platform/default/dso_loader.cc:44] Successfully opened dynamic library libcublas.so.10
+array([[0.9997596 ],
+       [0.5061394 ],
+       [0.9303511 ],
+       [0.7892672 ],
+       [0.9999958 ],
+       [0.9980216 ],
+       [0.33681375],
+       [0.35988793],
+       [0.9976675 ],
+       [0.9999008 ]], dtype=float32)
+#+end_example
+
+So far so good, let's follow the tutorial to set the initial bias as Log(pos/neg)
+
+#+BEGIN_SRC python :session 
+initial_bias = np.log(1/9)
+
+model = make_model(output_bias = initial_bias)
+model.predict(train_features[:10])
+
+#+END_SRC
+
+#+RESULTS:
+|    0.94163775 |
+|    0.92257184 |
+|     0.8388229 |
+|  0.0018517158 |
+| 4.5338511e-05 |
+|    0.27973586 |
+|  0.0094071003 |
+|   0.029227791 |
+|    0.47860023 |
+|  0.0087348791 |
+
+
+Train the model
+
+#+BEGIN_SRC python :session :results silent 
+initial_bias = np.log(1/9)
+
+model = make_model(hidden_units = 16, output_bias = initial_bias)
+#model.load_weights(initial_weights)
+baseline_history = model.fit(
+    train_features,
+    train_labels,
+    batch_size=2048,
+    epochs=500,
+    # callbacks = [early_stopping],
+    validation_data=(validation_features, validation_labels))
+#+END_SRC
+
+#+RESULTS:
+: 2020-01-27 23:12:17.650343: W tensorflow/core/framework/cpu_allocator_impl.cc:81] Allocation of 204800000 exceeds 10% of system memory.
+: 2020-01-27 23:12:17.912503: W tensorflow/core/framework/cpu_allocator_impl.cc:81] Allocation of 51200000 exceeds 10% of system memory.
+: Train on 128000 samples, validate on 32000 samples
+:   2048/128000 [..............................] - ETA: 7:54 - loss: 22.8784 - tp: 205.0000 - fp: 1806.0000 - tn: 30.0000 - fn: 7.0000 - accuracy: 0.1147 - precision: 0.1019 - recall: 0.9670 - auc: 0.4867  8192/128000 [>.............................] - ETA: 1:53 - loss: 16.3919 - tp: 788.0000 - fp: 6764.0000 - tn: 579.0000 - fn: 61.0000 - accuracy: 0.1669 - precision: 0.1043 - recall: 0.9282 - auc: 0.4966 22528/128000 [====>.........................] - ETA: 36s - loss: 7.9990 - tp: 1208.0000 - fp: 10592.0000 - tn: 9610.0000 - fn: 1118.0000 - accuracy: 0.4802 - precision: 0.1024 - recall: 0.5193 - auc: 0.4953 36864/128000 [=======>......................] - ETA: 19s - loss: 5.8956 - tp: 1216.0000 - fp: 10686.0000 - tn: 22399.0000 - fn: 2563.0000 - accuracy: 0.6406 - precision: 0.1022 - recall: 0.3218 - auc: 0.4991 51200/128000 [===========>..................] - ETA: 11s - loss: 5.0086 - tp: 1219.0000 - fp: 10718.0000 - tn: 35259.0000 - fn: 4004.0000 - accuracy: 0.7125 - precision: 0.1021 - recall: 0.2334 - auc: 0.5007 65536/128000 [==============>...............] - ETA: 7s - loss: 4.4345 - tp: 1229.0000 - fp: 10819.0000 - tn: 47999.0000 - fn: 5489.0000 - accuracy: 0.7512 - precision: 0.1020 - recall: 0.1829 - auc: 0.5004  79872/128000 [=================>............] - ETA: 4s - loss: 3.9526 - tp: 1285.0000 - fp: 11237.0000 - tn: 60502.0000 - fn: 6848.0000 - accuracy: 0.7736 - precision: 0.1026 - recall: 0.1580 - auc: 0.5015 94208/128000 [=====================>........] - ETA: 2s - loss: 3.5805 - tp: 1436.0000 - fp: 12531.0000 - tn: 72058.0000 - fn: 8183.0000 - accuracy: 0.7801 - precision: 0.1028 - recall: 0.1493 - auc: 0.5016108544/128000 [========================>.....] - ETA: 1s - loss: 3.2964 - tp: 1675.0000 - fp: 14593.0000 - tn: 82898.0000 - fn: 9378.0000 - accuracy: 0.7792 - precision: 0.1030 - recall: 0.1515 - auc: 0.5016122880/128000 [===========================>..] - ETA: 0s - loss: 3.0659 - tp: 1852.0000 - fp: 16176.0000 - tn: 94222.0000 - fn: 10630.0000 - accuracy: 0.7819 - precision: 0.1027 - recall: 0.1484 - auc: 0.5008128000/128000 [==============================] - 9s 70us/sample - loss: 2.9920 - tp: 1909.0000 - fp: 16609.0000 - tn: 98408.0000 - fn: 11074.0000 - accuracy: 0.7837 - precision: 0.1031 - recall: 0.1470 - auc: 0.5016 - val_loss: 0.9531 - val_tp: 65.0000 - val_fp: 342.0000 - val_tn: 28514.0000 - val_fn: 3079.0000 - val_accuracy: 0.8931 - val_precision: 0.1597 - val_recall: 0.0207 - val_auc: 0.5117
+** With class weights
+
+#+BEGIN_SRC python :session :results output
+# total/negative examples, total/positive examples, factor of 1/2 according to https://www.tensorflow.org/tutorials/structured_data/imbalanced_data
+weight_for_0 = (10.0/9.0)*1/2.0 
+weight_for_1 = 10.0/2.0
+
+class_weight = {0: weight_for_0, 1: weight_for_1}
+
+print('Weight for class 0: {:.2f}'.format(weight_for_0))
+print('Weight for class 1: {:.2f}'.format(weight_for_1))
+
+#+END_SRC
+
+#+RESULTS:
+: Weight for class 0: 0.56
+: Weight for class 1: 5.00
+
+#+BEGIN_SRC python :session :results silent
+initial_bias = np.log(1/9)
+
+weighted_model = make_model(hidden_units = 16, output_bias = initial_bias)
+
+weighted_history = weighted_model.fit(
+    train_features,
+    train_labels,
+    batch_size=2048*4,
+    epochs=500,
+    # callbacks = [early_stopping],
+    validation_data=(validation_features, validation_labels),
+    # The class weights go here
+    class_weight=class_weight) 
+#+END_SRC
+
+** Plot some metrics 
+
+Define function to plot metrics
+
+#+BEGIN_SRC python :session :results output 
+
+import matplotlib as mpl
+def plot_metrics(history):
+    metrics =  ['loss', 'auc', 'precision', 'recall']
+    mpl.rcParams['figure.figsize'] = (12, 10)
+    colors = plt.rcParams['axes.prop_cycle'].by_key()['color']
+    plt.figure(figsize=(6,4))
+ 
+    for n, metric in enumerate(metrics):
+        name = metric.replace("_"," ").capitalize()
+        plt.subplot(2,2,n+1)
+        plt.plot(history.epoch,  history.history[metric], color=colors[0], label='Train')
+        plt.plot(history.epoch, history.history['val_'+metric], color=colors[0], linestyle="--", label='Val')
+        plt.xlabel('Epoch')
+        plt.ylabel(name)
+        if metric == 'loss':
+            plt.ylim([0, plt.ylim()[1]])
+        elif metric == 'auc':
+            plt.ylim([0.8,1])
+        else:
+            plt.ylim([0,1])
+    
+    plt.legend()
+    plt.savefig('metrics.png')
+    plt.close()
+#+END_SRC
+
+#+RESULTS:
+
+Display metrics plot
+
+#+BEGIN_SRC python :session :results file
+plot_metrics(weighted_history)
+'metrics.png':pr
+#+END_SRC
+
+#+RESULTS:
+[[file:metrics.png]]
+
+
+
+
+* TODO Decision trees 
+
+Let's first run a basic Random Forest from sklearn. We'll use a blend of tutorials, with the FastAI lecture http://course18.fast.ai/lessonsml1/lesson2.html as backbone.
+
+#+BEGIN_SRC python :session :results output
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import roc_auc_score
+from sklearn.tree import export_graphviz
+#+END_SRC
+
+#+RESULTS:
+
+#+BEGIN_SRC python :session :results output :async
+# set up model parameters - for a start we can train a single small tree, with no probabilistic sample (no bootstrap), and tell it to use all of our cores.
+rf = RandomForestClassifier(n_estimators=10, max_depth=15, max_features="sqrt", class_weight={0:1,1:9}, n_jobs=-1)
+
+# Train the model on training data
+rf.fit(train_features, train_labels)
+
+# makes predictions of probabilities on validation data 
+predictions = rf.predict_proba(validation_features)
+
+# calculate auc (note we only need second column of prediction probabilites - the probability of positive label)
+auc = roc_auc_score(y_true=validation_labels, y_score=predictions[:,1])
+
+# results:
+# n_estimators=10, max_depth=10 , max_features="sqrt": 0.742, 20sec
+# n_estimators=100, max_depth=10 , max_features="sqrt": 0.803, 40sec
+# n_estimators=300, max_depth=10 , max_features="sqrt": 0.813, 2min 
+# n_estimators=100, max_depth=15 , max_features="sqrt": 0.814, 1min 
+# n_estimators=100, max_depth=25 , max_features="sqrt": 0.819, 2min 
+# n_estimators=100, max_depth=15 , max_features="sqrt", class_weight={0:1,1:9}: 0.757, 2min 
+# n_estimators=300, max_depth=15 , max_features="sqrt", class_weight={0:1,1:9}: 0.793, 3min 
+print(auc)
+#+END_SRC
+
+#+RESULTS:
+: 0.6297095305938086
+
+Let's draw the simple tree
+
+#+BEGIN_SRC python :session :results output
+export_graphviz(rf.estimators_[0], out_file=dotfile)
+#+END_SRC
+
+#+RESULTS:
+: Traceback (most recent call last):
+:   File "<stdin>", line 1, in <module>
+: NameError: name 'dotfile' is not defined
+
+** What if we scale our data? 
+#+BEGIN_SRC python :session :results output
+from sklearn.preprocessing import StandardScaler
+
+scaler = StandardScaler()
+
+# scale according to training data
+train_features_scaled = scaler.fit_transform(train_features)
+
+# apply the same transformation to validation data
+val_features_scaled = scaler.transform(validation_features)
+
+#+END_SRC
+
+#+RESULTS:
+
+
+
+# scaling
+
+#+BEGIN_SRC python :session :results output
+# set up model parameters
+rf = RandomForestClassifier(n_estimators=100, max_depth=15, max_features="sqrt", class_weight={0:1,1:9}, n_jobs=-1)
+
+# Train the model on training data
+rf.fit(train_features_scaled, train_labels)
+
+# makes predictions on validation and print auc 
+predictions = rf.predict_proba(val_features_scaled)
+auc = roc_auc_score(y_true=validation_labels, y_score=predictions[:,1])
+
+# results: 
+
+print(auc)
+#+END_SRC
+
+#+RESULTS:
+: 0.7583061694212846
+
+
+Could purposefully samply less of the negative examples.
+ 
+** What if we balance the data?
+
+
+
+** Boosted trees in tensorflow 
+
 * TODO LSTM? 
