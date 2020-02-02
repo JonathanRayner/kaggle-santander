@@ -12,7 +12,7 @@ I liked this as a toy model competition because the task and data are relatively
 ** Import data and modules, split into train/test/validation  
 Import the data. At this stage, we don't even import the unlabelled test data used for the competition, because we need labels to evaluate our model. So instead we'll split our training data as train/validation/test.
 
-#+BEGIN_SRC python :session :results silent :async 
+#+BEGIN_SRC python :session :results silent 
 import pandas as pd
 import numpy as np
 from matplotlib import pyplot as plt
@@ -23,7 +23,7 @@ from tensorflow import keras
 #+END_SRC
 
 
-#+BEGIN_SRC python :session :results output :async 
+#+BEGIN_SRC python :session :results output 
 raw_dataframe = pd.read_csv('train.csv')
 
 # The ID_code column contains no information, so we remove it
@@ -33,10 +33,15 @@ raw_dataframe.pop('ID_code')
 train_dataframe, test_dataframe = train_test_split(raw_dataframe, test_size=0.2)
 train_dataframe, validation_dataframe = train_test_split(train_dataframe, test_size=0.2)
 
+# Split labels and features apart as dataframes (for feeding into tensorflow pipeline)
+train_labels_dataframe = train_dataframe.pop('target')
+validation_labels_dataframe = validation_dataframe.pop('target')
+test_labels_dataframe = test_dataframe.pop('target')
+
 # Form np arrays of labels and features.
-train_labels = np.array(train_dataframe.pop('target'))
-validation_labels = np.array(validation_dataframe.pop('target'))
-test_labels = np.array(test_dataframe.pop('target'))
+train_labels = np.array(train_labels_dataframe)
+validation_labels = np.array(validation_labels_dataframe)
+test_labels = np.array(test_labels_dataframe)
 
 train_features = np.array(train_dataframe)
 validation_features = np.array(validation_dataframe)
@@ -106,6 +111,22 @@ plt.close()
 
 We don't notice any strong linear correlations, so we need to do some feature engineering/avoid linear models
 
+*** Plot some dataframe rows
+
+Let's plot all of the features for a given target on the same set of axes (perhaps this represents a sequence of transactions in time or something like that).
+
+#+BEGIN_SRC python :session :results file 
+j=15
+plt.plot(train_features[j])
+print([i for i,x in enumerate(train_labels[:100]) if x==1]) 
+plt.savefig('sample_features_plot.png')
+plt.close()
+'sample_features_plot.png'
+#+END_SRC
+
+#+RESULTS:
+[[file:sample_features_plot.png]]
+
 *** Plot some histograms 
 
 Plot a histogram of a column:
@@ -160,6 +181,7 @@ Plot a histogram across features for a given row that has target value 1.
 
 ** Preprocessing
 None yet. 
+
 * DONE Basic Neural Net model 
 CLOSED: [2020-01-29 Wed 20:01]
 ** No class weights 
@@ -243,6 +265,7 @@ _________________________________________________________________
 Test run with a small amount of data
 
 #+BEGIN_SRC python :session :results output
+# Input numpy as a numpy array
 model.predict(train_features[:10])
 #+END_SRC
 
@@ -290,7 +313,8 @@ Train the model
 initial_bias = np.log(1/9)
 
 model = make_model(hidden_units = 16, output_bias = initial_bias)
-#model.load_weights(initial_weights)
+
+# Features and labels input as numpy arrays
 baseline_history = model.fit(
     train_features,
     train_labels,
@@ -328,6 +352,7 @@ initial_bias = np.log(1/9)
 
 weighted_model = make_model(hidden_units = 16, output_bias = initial_bias)
 
+# features and labels input as numpy arrays
 weighted_history = weighted_model.fit(
     train_features,
     train_labels,
@@ -384,9 +409,8 @@ plot_metrics(weighted_history)
 [[file:metrics.png]]
 
 
-
-
-* TODO Decision trees 
+* DONE Decision trees 
+CLOSED: [2020-02-02 Sun 16:19]
 
 Let's first run a basic Random Forest from sklearn. We'll use a blend of tutorials, with the FastAI lecture http://course18.fast.ai/lessonsml1/lesson2.html as backbone.
 
@@ -398,7 +422,7 @@ from sklearn.tree import export_graphviz
 
 #+RESULTS:
 
-#+BEGIN_SRC python :session :results output :async
+#+BEGIN_SRC python :session :results output 
 # set up model parameters - for a start we can train a single small tree, with no probabilistic sample (no bootstrap), and tell it to use all of our cores.
 rf = RandomForestClassifier(n_estimators=100, max_depth=15, max_features="sqrt", n_jobs=7)
 
@@ -484,11 +508,196 @@ Could purposefully samply less of the negative examples.
 
 
 ** Boosted trees in tensorflow 
+* TODO Basic GBT   
+
+Let's also benchmark with a basic GBT implementation. We follow the tensorflow tutorial at https://www.tensorflow.org/tutorials/estimator/boosted_trees.
+
+
+#+BEGIN_SRC python :session :results output
+# useful shorthand to reduce clutter
+fc = tf.feature_column
+# start by using all features
+NUMERIC_COLUMNS = [f'var_{i}' for i in range(200)]
+
+feature_columns = []
+
+for feature_name in NUMERIC_COLUMNS:
+    feature_columns.append(fc.numeric_column(feature_name, dtype=tf.float32))
+    
+#+END_SRC
+
+#+RESULTS:
+
+Input functions
+
+#+BEGIN_SRC python :session :results output
+def make_input_fn(feature_dataframe,
+                  target_dataframe,
+                  batch_size=1, n_epochs=None,
+                  shuffle=True):
+
+    """Args:
+        feature_dataframe: pandas dataframe
+        target_dataframe: pandas dataframe
+        n_epochs: 'None' results in using as many epochs as needed
+    """
+
+    SHUFFLE_BUFFER_SIZE = len(train_labels)
+    def input_fn():
+        dataset = tf.data.Dataset.from_tensor_slices((dict(feature_dataframe), target_dataframe))
+        if shuffle:
+            dataset = dataset.shuffle(SHUFFLE_BUFFER_SIZE)
+        dataset = dataset.repeat(n_epochs)
+        dataset = dataset.batch(batch_size)
+        return dataset
+    return input_fn
+
+#+END_SRC
+
+#+RESULTS:
+
+Initaliaze GBT Classifier, train, and make predictions on validation data:
+
+#+BEGIN_SRC python :session :results output
+def train_GBT_classifier(feature_columns,
+                         train_dataframe,
+                         train_labels_dataframe,
+                         validation_dataframe,
+                         validation_labels_dataframe,
+                         n_trees=100,
+                         max_depth=6,
+                         batch_size=1000,
+                         n_batches_per_layer=1):
+    """Args:
+        feature_columns: pandas dataframe
+        train_dataframe: pandas dataframe
+        train_labels_dataframe: pandas dataframe
+        validation_dataframe: pandas dataframe
+        validation_labels_dataframe: pandas dataframe
+    """
+
+    # Initialize the classifier
+    GBT_classifier = tf.estimator.BoostedTreesClassifier(feature_columns,
+                                                         n_trees=n_trees,
+                                                         max_depth=max_depth,
+                                                         n_batches_per_layer=n_batches_per_layer)
+
+    # Train and validation input functions
+    train_input_fn = make_input_fn(train_dataframe, train_labels_dataframe, batch_size)
+    # Vaidation input function uses default batch_size=1
+    val_input_fn = make_input_fn(validation_dataframe, validation_labels_dataframe,
+                                 shuffle=False, n_epochs=1)
+
+    # Evaluate and print results
+    result = GBT_classifier.evaluate(val_input_fn)
+    clear_output()
+    print(pd.Series(result))
+
+    # return classifier so we can make other predictions if needed
+    return GBT_classifier
+
+GBT_classifier = train_GBT_classifier(feature_columns,
+                                      train_dataframe,
+                                      train_labels_dataframe,
+                                      validation_dataframe,
+                                      validation_labels_dataframe,
+                                      n_trees=100,
+                                      max_depth=6,
+                                      batch_size=1000)
+
+#+END_SRC
+
+#+RESULTS:
+#+begin_example
+INFO:tensorflow:Using default config.
+WARNING:tensorflow:Using temporary folder as model directory: /tmp/tmpnx6k5cib
+INFO:tensorflow:Using config: {'_model_dir': '/tmp/tmpnx6k5cib', '_tf_random_seed': None, '_save_summary_steps': 100, '_save_checkpoints_steps': None, '_save_checkpoints_secs': 600, '_session_config': allow_soft_placement: true
+graph_options {
+  rewrite_options {
+    meta_optimizer_iterations: ONE
+  }
+}
+, '_keep_checkpoint_max': 5, '_keep_checkpoint_every_n_hours': 10000, '_log_step_count_steps': 100, '_train_distribute': None, '_device_fn': None, '_protocol': None, '_eval_distribute': None, '_experimental_distribute': None, '_experimental_max_worker_delay_secs': None, '_session_creation_timeout_secs': 7200, '_service': None, '_cluster_spec': ClusterSpec({}), '_task_type': 'worker', '_task_id': 0, '_global_id_in_cluster': 0, '_master': '', '_evaluation_master': '', '_is_chief': True, '_num_ps_replicas': 0, '_num_worker_replicas': 1}
+INFO:tensorflow:Could not find trained model in model_dir: /tmp/tmpnx6k5cib, running initialization to evaluate.
+WARNING:tensorflow:From /home/jonathan/.pyenv/versions/tensorflow_env/lib/python3.8/site-packages/tensorflow_core/python/ops/resource_variable_ops.py:1628: calling BaseResourceVariable.__init__ (from tensorflow.python.ops.resource_variable_ops) with constraint is deprecated and will be removed in a future version.
+Instructions for updating:
+If using Keras pass *_constraint arguments to layers.
+INFO:tensorflow:Calling model_fn.
+2020-02-02 19:00:35.323853: I tensorflow/stream_executor/platform/default/dso_loader.cc:44] Successfully opened dynamic library libcuda.so.1
+2020-02-02 19:00:36.541954: I tensorflow/stream_executor/cuda/cuda_gpu_executor.cc:981] successful NUMA node read from SysFS had negative value (-1), but there must be at least one NUMA node, so returning NUMA node zero
+2020-02-02 19:00:36.587352: I tensorflow/core/common_runtime/gpu/gpu_device.cc:1555] Found device 0 with properties: 
+pciBusID: 0000:01:00.0 name: GeForce GT 755M computeCapability: 3.0
+coreClock: 1.0195GHz coreCount: 2 deviceMemorySize: 1.96GiB deviceMemoryBandwidth: 80.47GiB/s
+2020-02-02 19:00:36.587537: I tensorflow/stream_executor/platform/default/dso_loader.cc:44] Successfully opened dynamic library libcudart.so.10.2
+2020-02-02 19:00:37.168973: I tensorflow/stream_executor/platform/default/dso_loader.cc:44] Successfully opened dynamic library libcublas.so.10
+2020-02-02 19:00:37.427807: I tensorflow/stream_executor/platform/default/dso_loader.cc:44] Successfully opened dynamic library libcufft.so.10
+2020-02-02 19:00:37.506778: I tensorflow/stream_executor/platform/default/dso_loader.cc:44] Successfully opened dynamic library libcurand.so.10
+2020-02-02 19:00:38.100632: I tensorflow/stream_executor/platform/default/dso_loader.cc:44] Successfully opened dynamic library libcusolver.so.10
+2020-02-02 19:00:38.194083: I tensorflow/stream_executor/platform/default/dso_loader.cc:44] Successfully opened dynamic library libcusparse.so.10
+2020-02-02 19:00:39.237864: I tensorflow/stream_executor/platform/default/dso_loader.cc:44] Successfully opened dynamic library libcudnn.so.7
+2020-02-02 19:00:39.238333: I tensorflow/stream_executor/cuda/cuda_gpu_executor.cc:981] successful NUMA node read from SysFS had negative value (-1), but there must be at least one NUMA node, so returning NUMA node zero
+2020-02-02 19:00:39.239440: I tensorflow/stream_executor/cuda/cuda_gpu_executor.cc:981] successful NUMA node read from SysFS had negative value (-1), but there must be at least one NUMA node, so returning NUMA node zero
+2020-02-02 19:00:39.275268: I tensorflow/core/common_runtime/gpu/gpu_device.cc:1697] Adding visible gpu devices: 0
+WARNING:tensorflow:From /home/jonathan/.pyenv/versions/tensorflow_env/lib/python3.8/site-packages/tensorflow_core/python/ops/metrics_impl.py:2029: div (from tensorflow.python.ops.math_ops) is deprecated and will be removed in a future version.
+Instructions for updating:
+Deprecated in favor of operator or tf.math.divide.
+WARNING:tensorflow:From /home/jonathan/.pyenv/versions/tensorflow_env/lib/python3.8/site-packages/tensorflow_estimator/python/estimator/canned/head.py:617: auc (from tensorflow.python.ops.metrics_impl) is deprecated and will be removed in a future version.
+Instructions for updating:
+The value of AUC returned by this may race with the update so this is deprected. Please use tf.keras.metrics.AUC instead.
+WARNING:tensorflow:Trapezoidal rule is known to produce incorrect PR-AUCs; please switch to "careful_interpolation" instead.
+WARNING:tensorflow:Trapezoidal rule is known to produce incorrect PR-AUCs; please switch to "careful_interpolation" instead.
+INFO:tensorflow:Done calling model_fn.
+INFO:tensorflow:Starting evaluation at 2020-02-02T19:00:39Z
+INFO:tensorflow:Graph was finalized.
+2020-02-02 19:00:41.023364: I tensorflow/core/platform/profile_utils/cpu_utils.cc:94] CPU Frequency: 2395110000 Hz
+2020-02-02 19:00:41.042330: I tensorflow/compiler/xla/service/service.cc:168] XLA service 0x5619fd4a3360 initialized for platform Host (this does not guarantee that XLA will be used). Devices:
+2020-02-02 19:00:41.042397: I tensorflow/compiler/xla/service/service.cc:176]   StreamExecutor device (0): Host, Default Version
+2020-02-02 19:00:41.099090: I tensorflow/stream_executor/cuda/cuda_gpu_executor.cc:981] successful NUMA node read from SysFS had negative value (-1), but there must be at least one NUMA node, so returning NUMA node zero
+2020-02-02 19:00:41.099767: I tensorflow/core/common_runtime/gpu/gpu_device.cc:1555] Found device 0 with properties: 
+pciBusID: 0000:01:00.0 name: GeForce GT 755M computeCapability: 3.0
+coreClock: 1.0195GHz coreCount: 2 deviceMemorySize: 1.96GiB deviceMemoryBandwidth: 80.47GiB/s
+2020-02-02 19:00:41.099862: I tensorflow/stream_executor/platform/default/dso_loader.cc:44] Successfully opened dynamic library libcudart.so.10.2
+2020-02-02 19:00:41.099930: I tensorflow/stream_executor/platform/default/dso_loader.cc:44] Successfully opened dynamic library libcublas.so.10
+2020-02-02 19:00:41.099998: I tensorflow/stream_executor/platform/default/dso_loader.cc:44] Successfully opened dynamic library libcufft.so.10
+2020-02-02 19:00:41.100054: I tensorflow/stream_executor/platform/default/dso_loader.cc:44] Successfully opened dynamic library libcurand.so.10
+2020-02-02 19:00:41.100103: I tensorflow/stream_executor/platform/default/dso_loader.cc:44] Successfully opened dynamic library libcusolver.so.10
+2020-02-02 19:00:41.100150: I tensorflow/stream_executor/platform/default/dso_loader.cc:44] Successfully opened dynamic library libcusparse.so.10
+2020-02-02 19:00:41.100203: I tensorflow/stream_executor/platform/default/dso_loader.cc:44] Successfully opened dynamic library libcudnn.so.7
+2020-02-02 19:00:41.100367: I tensorflow/stream_executor/cuda/cuda_gpu_executor.cc:981] successful NUMA node read from SysFS had negative value (-1), but there must be at least one NUMA node, so returning NUMA node zero
+2020-02-02 19:00:41.101078: I tensorflow/stream_executor/cuda/cuda_gpu_executor.cc:981] successful NUMA node read from SysFS had negative value (-1), but there must be at least one NUMA node, so returning NUMA node zero
+2020-02-02 19:00:41.101666: I tensorflow/core/common_runtime/gpu/gpu_device.cc:1697] Adding visible gpu devices: 0
+2020-02-02 19:00:41.128478: I tensorflow/stream_executor/platform/default/dso_loader.cc:44] Successfully opened dynamic library libcudart.so.10.2
+2020-02-02 19:00:47.592962: I tensorflow/core/common_runtime/gpu/gpu_device.cc:1096] Device interconnect StreamExecutor with strength 1 edge matrix:
+2020-02-02 19:00:47.593041: I tensorflow/core/common_runtime/gpu/gpu_device.cc:1102]      0 
+2020-02-02 19:00:47.593061: I tensorflow/core/common_runtime/gpu/gpu_device.cc:1115] 0:   N 
+2020-02-02 19:00:47.645052: I tensorflow/stream_executor/cuda/cuda_gpu_executor.cc:981] successful NUMA node read from SysFS had negative value (-1), but there must be at least one NUMA node, so returning NUMA node zero
+2020-02-02 19:00:47.645746: I tensorflow/stream_executor/cuda/cuda_gpu_executor.cc:981] successful NUMA node read from SysFS had negative value (-1), but there must be at least one NUMA node, so returning NUMA node zero
+2020-02-02 19:00:47.646348: I tensorflow/stream_executor/cuda/cuda_gpu_executor.cc:981] successful NUMA node read from SysFS had negative value (-1), but there must be at least one NUMA node, so returning NUMA node zero
+2020-02-02 19:00:47.682270: I tensorflow/core/common_runtime/gpu/gpu_device.cc:1241] Created TensorFlow device (/job:localhost/replica:0/task:0/device:GPU:0 with 1684 MB memory) -> physical GPU (device: 0, name: GeForce GT 755M, pci bus id: 0000:01:00.0, compute capability: 3.0)
+2020-02-02 19:00:47.748501: I tensorflow/compiler/xla/service/platform_util.cc:205] StreamExecutor cuda device (0) is of insufficient compute capability: 3.5 required, device is 3.0
+2020-02-02 19:00:47.774667: I tensorflow/compiler/jit/xla_gpu_device.cc:136] Ignoring visible XLA_GPU_JIT device. Device number is 0, reason: Internal: no supported devices found for platform CUDA
+INFO:tensorflow:Running local_init_op.
+INFO:tensorflow:Done running local_init_op.
+INFO:tensorflow:Inference Time : 402.40759s
+INFO:tensorflow:Finished evaluation at 2020-02-02-19:07:22
+INFO:tensorflow:Saving dict for global step 0: accuracy = 0.9003438, accuracy_baseline = 0.9003438, auc = 0.5, auc_precision_recall = 0.5498281, average_loss = 0.6933164, global_step = 0, label/mean = 0.09965625, loss = 0.6933164, precision = 0.0, prediction/mean = 0.5, recall = 0.0
+WARNING:tensorflow:Issue encountered when serializing resources.
+Type is unsupported, or the types of the items don't match field type in CollectionDef. Note this is a warning and probably safe to ignore.
+'_Resource' object has no attribute 'name'
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+  File "/tmp/babel-jMDcek/python-PMDUdM", line 38, in <module>
+    GBT_classifier = train_GBT_classifier(feature_columns,
+  File "/tmp/babel-jMDcek/python-PMDUdM", line 32, in train_GBT_classifier
+    clear_output()
+NameError: name 'clear_output' is not defined
+#+end_example
 
 * TODO Feature Engineering
 
 - Polynomial features (sklearn) -> correlation with targets
-- Identify most import features
+- Identify most import features (functions, and via decision trees)
 - PCA then 1+2?
 
+  
 * TODO LSTM? 
