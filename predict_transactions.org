@@ -17,9 +17,10 @@ import pandas as pd
 import numpy as np
 from matplotlib import pyplot as plt
 from sklearn.model_selection import train_test_split
-import seaborn as sns
-import tensorflow as tf
-from tensorflow import keras
+# import xgboost as xgb
+
+# import tensorflow as tf
+# from tensorflow import keras
 #+END_SRC
 
 
@@ -33,15 +34,10 @@ raw_dataframe.pop('ID_code')
 train_dataframe, test_dataframe = train_test_split(raw_dataframe, test_size=0.2)
 train_dataframe, validation_dataframe = train_test_split(train_dataframe, test_size=0.2)
 
-# Split labels and features apart as dataframes (for feeding into tensorflow pipeline)
-train_labels_dataframe = train_dataframe.pop('target')
-validation_labels_dataframe = validation_dataframe.pop('target')
-test_labels_dataframe = test_dataframe.pop('target')
-
 # Form np arrays of labels and features.
-train_labels = np.array(train_labels_dataframe)
-validation_labels = np.array(validation_labels_dataframe)
-test_labels = np.array(test_labels_dataframe)
+train_labels = np.array(train_dataframe.pop('target'))
+validation_labels = np.array(validation_dataframe.pop('target'))
+test_labels = np.array(test_dataframe.pop('target'))
 
 train_features = np.array(train_dataframe)
 validation_features = np.array(validation_dataframe)
@@ -408,7 +404,6 @@ plot_metrics(weighted_history)
 #+RESULTS:
 [[file:metrics.png]]
 
-
 * DONE Decision trees 
 CLOSED: [2020-02-02 Sun 16:19]
 
@@ -508,7 +503,8 @@ Could purposefully samply less of the negative examples.
 
 
 ** Boosted trees in tensorflow 
-* TODO Basic GBT   
+* DONE GBT in tensorflow (abandoned)   
+CLOSED: [2020-02-03 Mon 05:47]
 
 Let's also benchmark with a basic GBT implementation. We follow the tensorflow tutorial at https://www.tensorflow.org/tutorials/estimator/boosted_trees.
 
@@ -517,7 +513,7 @@ Let's also benchmark with a basic GBT implementation. We follow the tensorflow t
 # useful shorthand to reduce clutter
 fc = tf.feature_column
 # start by using all features
-NUMERIC_COLUMNS = [f'var_{i}' for i in range(200)]
+NUMERIC_COLUMNS = [f'var_{i}' for i in range(20)]
 
 feature_columns = []
 
@@ -542,13 +538,13 @@ def make_input_fn(feature_dataframe,
         n_epochs: 'None' results in using as many epochs as needed
     """
 
-    SHUFFLE_BUFFER_SIZE = len(train_labels)
+    SHUFFLE_BUFFER_SIZE = 10000
     def input_fn():
         dataset = tf.data.Dataset.from_tensor_slices((dict(feature_dataframe), target_dataframe))
+        dataset = dataset.batch(batch_size)
+        dataset = dataset.repeat(n_epochs)
         if shuffle:
             dataset = dataset.shuffle(SHUFFLE_BUFFER_SIZE)
-        dataset = dataset.repeat(n_epochs)
-        dataset = dataset.batch(batch_size)
         return dataset
     return input_fn
 
@@ -566,7 +562,7 @@ def train_GBT_classifier(feature_columns,
                          validation_labels_dataframe,
                          n_trees=100,
                          max_depth=6,
-                         batch_size=1000,
+                         batch_size=100,
                          n_batches_per_layer=1):
     """Args:
         feature_columns: pandas dataframe
@@ -583,14 +579,16 @@ def train_GBT_classifier(feature_columns,
                                                          n_batches_per_layer=n_batches_per_layer)
 
     # Train and validation input functions
-    train_input_fn = make_input_fn(train_dataframe, train_labels_dataframe, batch_size)
+    train_input_fn = make_input_fn(train_dataframe, train_labels_dataframe, batch_size, n_epochs=10)
     # Vaidation input function uses default batch_size=1
     val_input_fn = make_input_fn(validation_dataframe, validation_labels_dataframe,
                                  shuffle=False, n_epochs=1)
 
+    # Train
+    GBT_classifier.train(train_input_fn, max_steps=100)
+
     # Evaluate and print results
     result = GBT_classifier.evaluate(val_input_fn)
-    clear_output()
     print(pd.Series(result))
 
     # return classifier so we can make other predictions if needed
@@ -601,43 +599,95 @@ GBT_classifier = train_GBT_classifier(feature_columns,
                                       train_labels_dataframe,
                                       validation_dataframe,
                                       validation_labels_dataframe,
-                                      n_trees=100,
+                                      n_trees=10,
                                       max_depth=6,
-                                      batch_size=1000)
+                                      batch_size=1)
 
 #+END_SRC
 
 #+RESULTS:
 #+begin_example
 INFO:tensorflow:Using default config.
-WARNING:tensorflow:Using temporary folder as model directory: /tmp/tmpnx6k5cib
-INFO:tensorflow:Using config: {'_model_dir': '/tmp/tmpnx6k5cib', '_tf_random_seed': None, '_save_summary_steps': 100, '_save_checkpoints_steps': None, '_save_checkpoints_secs': 600, '_session_config': allow_soft_placement: true
+WARNING:tensorflow:Using temporary folder as model directory: /tmp/tmpymp5cnym
+INFO:tensorflow:Using config: {'_model_dir': '/tmp/tmpymp5cnym', '_tf_random_seed': None, '_save_summary_steps': 100, '_save_checkpoints_steps': None, '_save_checkpoints_secs': 600, '_session_config': allow_soft_placement: true
 graph_options {
   rewrite_options {
     meta_optimizer_iterations: ONE
   }
 }
 , '_keep_checkpoint_max': 5, '_keep_checkpoint_every_n_hours': 10000, '_log_step_count_steps': 100, '_train_distribute': None, '_device_fn': None, '_protocol': None, '_eval_distribute': None, '_experimental_distribute': None, '_experimental_max_worker_delay_secs': None, '_session_creation_timeout_secs': 7200, '_service': None, '_cluster_spec': ClusterSpec({}), '_task_type': 'worker', '_task_id': 0, '_global_id_in_cluster': 0, '_master': '', '_evaluation_master': '', '_is_chief': True, '_num_ps_replicas': 0, '_num_worker_replicas': 1}
-INFO:tensorflow:Could not find trained model in model_dir: /tmp/tmpnx6k5cib, running initialization to evaluate.
 WARNING:tensorflow:From /home/jonathan/.pyenv/versions/tensorflow_env/lib/python3.8/site-packages/tensorflow_core/python/ops/resource_variable_ops.py:1628: calling BaseResourceVariable.__init__ (from tensorflow.python.ops.resource_variable_ops) with constraint is deprecated and will be removed in a future version.
 Instructions for updating:
 If using Keras pass *_constraint arguments to layers.
-INFO:tensorflow:Calling model_fn.
-2020-02-02 19:00:35.323853: I tensorflow/stream_executor/platform/default/dso_loader.cc:44] Successfully opened dynamic library libcuda.so.1
-2020-02-02 19:00:36.541954: I tensorflow/stream_executor/cuda/cuda_gpu_executor.cc:981] successful NUMA node read from SysFS had negative value (-1), but there must be at least one NUMA node, so returning NUMA node zero
-2020-02-02 19:00:36.587352: I tensorflow/core/common_runtime/gpu/gpu_device.cc:1555] Found device 0 with properties: 
+WARNING:tensorflow:From /home/jonathan/.pyenv/versions/tensorflow_env/lib/python3.8/site-packages/tensorflow_core/python/training/training_util.py:235: Variable.initialized_value (from tensorflow.python.ops.variables) is deprecated and will be removed in a future version.
+Instructions for updating:
+Use Variable.read_value. Variables in 2.X are initialized automatically both in eager and graph (inside tf.defun) contexts.
+2020-02-03 03:00:39.480198: I tensorflow/stream_executor/platform/default/dso_loader.cc:44] Successfully opened dynamic library libcuda.so.1
+2020-02-03 03:00:39.669985: I tensorflow/stream_executor/cuda/cuda_gpu_executor.cc:981] successful NUMA node read from SysFS had negative value (-1), but there must be at least one NUMA node, so returning NUMA node zero
+2020-02-03 03:00:39.670331: I tensorflow/core/common_runtime/gpu/gpu_device.cc:1555] Found device 0 with properties: 
 pciBusID: 0000:01:00.0 name: GeForce GT 755M computeCapability: 3.0
 coreClock: 1.0195GHz coreCount: 2 deviceMemorySize: 1.96GiB deviceMemoryBandwidth: 80.47GiB/s
-2020-02-02 19:00:36.587537: I tensorflow/stream_executor/platform/default/dso_loader.cc:44] Successfully opened dynamic library libcudart.so.10.2
-2020-02-02 19:00:37.168973: I tensorflow/stream_executor/platform/default/dso_loader.cc:44] Successfully opened dynamic library libcublas.so.10
-2020-02-02 19:00:37.427807: I tensorflow/stream_executor/platform/default/dso_loader.cc:44] Successfully opened dynamic library libcufft.so.10
-2020-02-02 19:00:37.506778: I tensorflow/stream_executor/platform/default/dso_loader.cc:44] Successfully opened dynamic library libcurand.so.10
-2020-02-02 19:00:38.100632: I tensorflow/stream_executor/platform/default/dso_loader.cc:44] Successfully opened dynamic library libcusolver.so.10
-2020-02-02 19:00:38.194083: I tensorflow/stream_executor/platform/default/dso_loader.cc:44] Successfully opened dynamic library libcusparse.so.10
-2020-02-02 19:00:39.237864: I tensorflow/stream_executor/platform/default/dso_loader.cc:44] Successfully opened dynamic library libcudnn.so.7
-2020-02-02 19:00:39.238333: I tensorflow/stream_executor/cuda/cuda_gpu_executor.cc:981] successful NUMA node read from SysFS had negative value (-1), but there must be at least one NUMA node, so returning NUMA node zero
-2020-02-02 19:00:39.239440: I tensorflow/stream_executor/cuda/cuda_gpu_executor.cc:981] successful NUMA node read from SysFS had negative value (-1), but there must be at least one NUMA node, so returning NUMA node zero
-2020-02-02 19:00:39.275268: I tensorflow/core/common_runtime/gpu/gpu_device.cc:1697] Adding visible gpu devices: 0
+2020-02-03 03:00:39.670362: I tensorflow/stream_executor/platform/default/dso_loader.cc:44] Successfully opened dynamic library libcudart.so.10.2
+2020-02-03 03:00:40.284232: I tensorflow/stream_executor/platform/default/dso_loader.cc:44] Successfully opened dynamic library libcublas.so.10
+2020-02-03 03:00:40.443930: I tensorflow/stream_executor/platform/default/dso_loader.cc:44] Successfully opened dynamic library libcufft.so.10
+2020-02-03 03:00:40.746711: I tensorflow/stream_executor/platform/default/dso_loader.cc:44] Successfully opened dynamic library libcurand.so.10
+2020-02-03 03:00:41.021440: I tensorflow/stream_executor/platform/default/dso_loader.cc:44] Successfully opened dynamic library libcusolver.so.10
+2020-02-03 03:00:41.057930: I tensorflow/stream_executor/platform/default/dso_loader.cc:44] Successfully opened dynamic library libcusparse.so.10
+2020-02-03 03:00:41.122727: I tensorflow/stream_executor/platform/default/dso_loader.cc:44] Successfully opened dynamic library libcudnn.so.7
+2020-02-03 03:00:41.123034: I tensorflow/stream_executor/cuda/cuda_gpu_executor.cc:981] successful NUMA node read from SysFS had negative value (-1), but there must be at least one NUMA node, so returning NUMA node zero
+2020-02-03 03:00:41.123835: I tensorflow/stream_executor/cuda/cuda_gpu_executor.cc:981] successful NUMA node read from SysFS had negative value (-1), but there must be at least one NUMA node, so returning NUMA node zero
+2020-02-03 03:00:41.124448: I tensorflow/core/common_runtime/gpu/gpu_device.cc:1697] Adding visible gpu devices: 0
+INFO:tensorflow:Calling model_fn.
+INFO:tensorflow:Done calling model_fn.
+INFO:tensorflow:Create CheckpointSaverHook.
+WARNING:tensorflow:Issue encountered when serializing resources.
+Type is unsupported, or the types of the items don't match field type in CollectionDef. Note this is a warning and probably safe to ignore.
+'_Resource' object has no attribute 'name'
+INFO:tensorflow:Graph was finalized.
+2020-02-03 03:00:43.808162: I tensorflow/core/platform/profile_utils/cpu_utils.cc:94] CPU Frequency: 2395110000 Hz
+2020-02-03 03:00:43.808721: I tensorflow/compiler/xla/service/service.cc:168] XLA service 0x563bb9ecd630 initialized for platform Host (this does not guarantee that XLA will be used). Devices:
+2020-02-03 03:00:43.808757: I tensorflow/compiler/xla/service/service.cc:176]   StreamExecutor device (0): Host, Default Version
+2020-02-03 03:00:43.809025: I tensorflow/stream_executor/cuda/cuda_gpu_executor.cc:981] successful NUMA node read from SysFS had negative value (-1), but there must be at least one NUMA node, so returning NUMA node zero
+2020-02-03 03:00:43.809507: I tensorflow/core/common_runtime/gpu/gpu_device.cc:1555] Found device 0 with properties: 
+pciBusID: 0000:01:00.0 name: GeForce GT 755M computeCapability: 3.0
+coreClock: 1.0195GHz coreCount: 2 deviceMemorySize: 1.96GiB deviceMemoryBandwidth: 80.47GiB/s
+2020-02-03 03:00:43.809563: I tensorflow/stream_executor/platform/default/dso_loader.cc:44] Successfully opened dynamic library libcudart.so.10.2
+2020-02-03 03:00:43.809597: I tensorflow/stream_executor/platform/default/dso_loader.cc:44] Successfully opened dynamic library libcublas.so.10
+2020-02-03 03:00:43.809627: I tensorflow/stream_executor/platform/default/dso_loader.cc:44] Successfully opened dynamic library libcufft.so.10
+2020-02-03 03:00:43.809654: I tensorflow/stream_executor/platform/default/dso_loader.cc:44] Successfully opened dynamic library libcurand.so.10
+2020-02-03 03:00:43.809682: I tensorflow/stream_executor/platform/default/dso_loader.cc:44] Successfully opened dynamic library libcusolver.so.10
+2020-02-03 03:00:43.809710: I tensorflow/stream_executor/platform/default/dso_loader.cc:44] Successfully opened dynamic library libcusparse.so.10
+2020-02-03 03:00:43.809739: I tensorflow/stream_executor/platform/default/dso_loader.cc:44] Successfully opened dynamic library libcudnn.so.7
+2020-02-03 03:00:43.809825: I tensorflow/stream_executor/cuda/cuda_gpu_executor.cc:981] successful NUMA node read from SysFS had negative value (-1), but there must be at least one NUMA node, so returning NUMA node zero
+2020-02-03 03:00:43.810297: I tensorflow/stream_executor/cuda/cuda_gpu_executor.cc:981] successful NUMA node read from SysFS had negative value (-1), but there must be at least one NUMA node, so returning NUMA node zero
+2020-02-03 03:00:43.810697: I tensorflow/core/common_runtime/gpu/gpu_device.cc:1697] Adding visible gpu devices: 0
+2020-02-03 03:00:43.810750: I tensorflow/stream_executor/platform/default/dso_loader.cc:44] Successfully opened dynamic library libcudart.so.10.2
+2020-02-03 03:00:44.133690: I tensorflow/core/common_runtime/gpu/gpu_device.cc:1096] Device interconnect StreamExecutor with strength 1 edge matrix:
+2020-02-03 03:00:44.133725: I tensorflow/core/common_runtime/gpu/gpu_device.cc:1102]      0 
+2020-02-03 03:00:44.133732: I tensorflow/core/common_runtime/gpu/gpu_device.cc:1115] 0:   N 
+2020-02-03 03:00:44.133918: I tensorflow/stream_executor/cuda/cuda_gpu_executor.cc:981] successful NUMA node read from SysFS had negative value (-1), but there must be at least one NUMA node, so returning NUMA node zero
+2020-02-03 03:00:44.134301: I tensorflow/stream_executor/cuda/cuda_gpu_executor.cc:981] successful NUMA node read from SysFS had negative value (-1), but there must be at least one NUMA node, so returning NUMA node zero
+2020-02-03 03:00:44.134658: I tensorflow/stream_executor/cuda/cuda_gpu_executor.cc:981] successful NUMA node read from SysFS had negative value (-1), but there must be at least one NUMA node, so returning NUMA node zero
+2020-02-03 03:00:44.134990: I tensorflow/core/common_runtime/gpu/gpu_device.cc:1241] Created TensorFlow device (/job:localhost/replica:0/task:0/device:GPU:0 with 1691 MB memory) -> physical GPU (device: 0, name: GeForce GT 755M, pci bus id: 0000:01:00.0, compute capability: 3.0)
+2020-02-03 03:00:44.136577: I tensorflow/compiler/xla/service/platform_util.cc:205] StreamExecutor cuda device (0) is of insufficient compute capability: 3.5 required, device is 3.0
+2020-02-03 03:00:44.136652: I tensorflow/compiler/jit/xla_gpu_device.cc:136] Ignoring visible XLA_GPU_JIT device. Device number is 0, reason: Internal: no supported devices found for platform CUDA
+INFO:tensorflow:Running local_init_op.
+INFO:tensorflow:Done running local_init_op.
+WARNING:tensorflow:Issue encountered when serializing resources.
+Type is unsupported, or the types of the items don't match field type in CollectionDef. Note this is a warning and probably safe to ignore.
+'_Resource' object has no attribute 'name'
+INFO:tensorflow:Saving checkpoints for 0 into /tmp/tmpymp5cnym/model.ckpt.
+WARNING:tensorflow:Issue encountered when serializing resources.
+Type is unsupported, or the types of the items don't match field type in CollectionDef. Note this is a warning and probably safe to ignore.
+'_Resource' object has no attribute 'name'
+INFO:tensorflow:loss = 0.6931472, step = 0
+WARNING:tensorflow:It seems that global step (tf.train.get_global_step) has not been increased. Current value (could be stable): 0 vs previous value: 0. You could increase the global step by passing tf.train.get_global_step() to Optimizer.apply_gradients or Optimizer.minimize.
+INFO:tensorflow:Saving checkpoints for 60 into /tmp/tmpymp5cnym/model.ckpt.
+WARNING:tensorflow:Issue encountered when serializing resources.
+Type is unsupported, or the types of the items don't match field type in CollectionDef. Note this is a warning and probably safe to ignore.
+'_Resource' object has no attribute 'name'
+INFO:tensorflow:Loss for final step: 0.08353096.
+INFO:tensorflow:Calling model_fn.
 WARNING:tensorflow:From /home/jonathan/.pyenv/versions/tensorflow_env/lib/python3.8/site-packages/tensorflow_core/python/ops/metrics_impl.py:2029: div (from tensorflow.python.ops.math_ops) is deprecated and will be removed in a future version.
 Instructions for updating:
 Deprecated in favor of operator or tf.math.divide.
@@ -647,51 +697,271 @@ The value of AUC returned by this may race with the update so this is deprected.
 WARNING:tensorflow:Trapezoidal rule is known to produce incorrect PR-AUCs; please switch to "careful_interpolation" instead.
 WARNING:tensorflow:Trapezoidal rule is known to produce incorrect PR-AUCs; please switch to "careful_interpolation" instead.
 INFO:tensorflow:Done calling model_fn.
-INFO:tensorflow:Starting evaluation at 2020-02-02T19:00:39Z
+INFO:tensorflow:Starting evaluation at 2020-02-03T03:01:30Z
 INFO:tensorflow:Graph was finalized.
-2020-02-02 19:00:41.023364: I tensorflow/core/platform/profile_utils/cpu_utils.cc:94] CPU Frequency: 2395110000 Hz
-2020-02-02 19:00:41.042330: I tensorflow/compiler/xla/service/service.cc:168] XLA service 0x5619fd4a3360 initialized for platform Host (this does not guarantee that XLA will be used). Devices:
-2020-02-02 19:00:41.042397: I tensorflow/compiler/xla/service/service.cc:176]   StreamExecutor device (0): Host, Default Version
-2020-02-02 19:00:41.099090: I tensorflow/stream_executor/cuda/cuda_gpu_executor.cc:981] successful NUMA node read from SysFS had negative value (-1), but there must be at least one NUMA node, so returning NUMA node zero
-2020-02-02 19:00:41.099767: I tensorflow/core/common_runtime/gpu/gpu_device.cc:1555] Found device 0 with properties: 
+2020-02-03 03:01:30.822953: I tensorflow/stream_executor/cuda/cuda_gpu_executor.cc:981] successful NUMA node read from SysFS had negative value (-1), but there must be at least one NUMA node, so returning NUMA node zero
+2020-02-03 03:01:30.844028: I tensorflow/core/common_runtime/gpu/gpu_device.cc:1555] Found device 0 with properties: 
 pciBusID: 0000:01:00.0 name: GeForce GT 755M computeCapability: 3.0
 coreClock: 1.0195GHz coreCount: 2 deviceMemorySize: 1.96GiB deviceMemoryBandwidth: 80.47GiB/s
-2020-02-02 19:00:41.099862: I tensorflow/stream_executor/platform/default/dso_loader.cc:44] Successfully opened dynamic library libcudart.so.10.2
-2020-02-02 19:00:41.099930: I tensorflow/stream_executor/platform/default/dso_loader.cc:44] Successfully opened dynamic library libcublas.so.10
-2020-02-02 19:00:41.099998: I tensorflow/stream_executor/platform/default/dso_loader.cc:44] Successfully opened dynamic library libcufft.so.10
-2020-02-02 19:00:41.100054: I tensorflow/stream_executor/platform/default/dso_loader.cc:44] Successfully opened dynamic library libcurand.so.10
-2020-02-02 19:00:41.100103: I tensorflow/stream_executor/platform/default/dso_loader.cc:44] Successfully opened dynamic library libcusolver.so.10
-2020-02-02 19:00:41.100150: I tensorflow/stream_executor/platform/default/dso_loader.cc:44] Successfully opened dynamic library libcusparse.so.10
-2020-02-02 19:00:41.100203: I tensorflow/stream_executor/platform/default/dso_loader.cc:44] Successfully opened dynamic library libcudnn.so.7
-2020-02-02 19:00:41.100367: I tensorflow/stream_executor/cuda/cuda_gpu_executor.cc:981] successful NUMA node read from SysFS had negative value (-1), but there must be at least one NUMA node, so returning NUMA node zero
-2020-02-02 19:00:41.101078: I tensorflow/stream_executor/cuda/cuda_gpu_executor.cc:981] successful NUMA node read from SysFS had negative value (-1), but there must be at least one NUMA node, so returning NUMA node zero
-2020-02-02 19:00:41.101666: I tensorflow/core/common_runtime/gpu/gpu_device.cc:1697] Adding visible gpu devices: 0
-2020-02-02 19:00:41.128478: I tensorflow/stream_executor/platform/default/dso_loader.cc:44] Successfully opened dynamic library libcudart.so.10.2
-2020-02-02 19:00:47.592962: I tensorflow/core/common_runtime/gpu/gpu_device.cc:1096] Device interconnect StreamExecutor with strength 1 edge matrix:
-2020-02-02 19:00:47.593041: I tensorflow/core/common_runtime/gpu/gpu_device.cc:1102]      0 
-2020-02-02 19:00:47.593061: I tensorflow/core/common_runtime/gpu/gpu_device.cc:1115] 0:   N 
-2020-02-02 19:00:47.645052: I tensorflow/stream_executor/cuda/cuda_gpu_executor.cc:981] successful NUMA node read from SysFS had negative value (-1), but there must be at least one NUMA node, so returning NUMA node zero
-2020-02-02 19:00:47.645746: I tensorflow/stream_executor/cuda/cuda_gpu_executor.cc:981] successful NUMA node read from SysFS had negative value (-1), but there must be at least one NUMA node, so returning NUMA node zero
-2020-02-02 19:00:47.646348: I tensorflow/stream_executor/cuda/cuda_gpu_executor.cc:981] successful NUMA node read from SysFS had negative value (-1), but there must be at least one NUMA node, so returning NUMA node zero
-2020-02-02 19:00:47.682270: I tensorflow/core/common_runtime/gpu/gpu_device.cc:1241] Created TensorFlow device (/job:localhost/replica:0/task:0/device:GPU:0 with 1684 MB memory) -> physical GPU (device: 0, name: GeForce GT 755M, pci bus id: 0000:01:00.0, compute capability: 3.0)
-2020-02-02 19:00:47.748501: I tensorflow/compiler/xla/service/platform_util.cc:205] StreamExecutor cuda device (0) is of insufficient compute capability: 3.5 required, device is 3.0
-2020-02-02 19:00:47.774667: I tensorflow/compiler/jit/xla_gpu_device.cc:136] Ignoring visible XLA_GPU_JIT device. Device number is 0, reason: Internal: no supported devices found for platform CUDA
+2020-02-03 03:01:30.857993: I tensorflow/stream_executor/platform/default/dso_loader.cc:44] Successfully opened dynamic library libcudart.so.10.2
+2020-02-03 03:01:30.884146: I tensorflow/stream_executor/platform/default/dso_loader.cc:44] Successfully opened dynamic library libcublas.so.10
+2020-02-03 03:01:30.884308: I tensorflow/stream_executor/platform/default/dso_loader.cc:44] Successfully opened dynamic library libcufft.so.10
+2020-02-03 03:01:30.884376: I tensorflow/stream_executor/platform/default/dso_loader.cc:44] Successfully opened dynamic library libcurand.so.10
+2020-02-03 03:01:30.884433: I tensorflow/stream_executor/platform/default/dso_loader.cc:44] Successfully opened dynamic library libcusolver.so.10
+2020-02-03 03:01:30.884487: I tensorflow/stream_executor/platform/default/dso_loader.cc:44] Successfully opened dynamic library libcusparse.so.10
+2020-02-03 03:01:30.884567: I tensorflow/stream_executor/platform/default/dso_loader.cc:44] Successfully opened dynamic library libcudnn.so.7
+2020-02-03 03:01:30.884761: I tensorflow/stream_executor/cuda/cuda_gpu_executor.cc:981] successful NUMA node read from SysFS had negative value (-1), but there must be at least one NUMA node, so returning NUMA node zero
+2020-02-03 03:01:30.885395: I tensorflow/stream_executor/cuda/cuda_gpu_executor.cc:981] successful NUMA node read from SysFS had negative value (-1), but there must be at least one NUMA node, so returning NUMA node zero
+2020-02-03 03:01:30.885863: I tensorflow/core/common_runtime/gpu/gpu_device.cc:1697] Adding visible gpu devices: 0
+2020-02-03 03:01:30.885921: I tensorflow/core/common_runtime/gpu/gpu_device.cc:1096] Device interconnect StreamExecutor with strength 1 edge matrix:
+2020-02-03 03:01:30.885946: I tensorflow/core/common_runtime/gpu/gpu_device.cc:1102]      0 
+2020-02-03 03:01:30.902420: I tensorflow/core/common_runtime/gpu/gpu_device.cc:1115] 0:   N 
+2020-02-03 03:01:30.902808: I tensorflow/stream_executor/cuda/cuda_gpu_executor.cc:981] successful NUMA node read from SysFS had negative value (-1), but there must be at least one NUMA node, so returning NUMA node zero
+2020-02-03 03:01:30.903429: I tensorflow/stream_executor/cuda/cuda_gpu_executor.cc:981] successful NUMA node read from SysFS had negative value (-1), but there must be at least one NUMA node, so returning NUMA node zero
+2020-02-03 03:01:30.903929: I tensorflow/core/common_runtime/gpu/gpu_device.cc:1241] Created TensorFlow device (/job:localhost/replica:0/task:0/device:GPU:0 with 1691 MB memory) -> physical GPU (device: 0, name: GeForce GT 755M, pci bus id: 0000:01:00.0, compute capability: 3.0)
+2020-02-03 03:01:30.910430: I tensorflow/compiler/xla/service/platform_util.cc:205] StreamExecutor cuda device (0) is of insufficient compute capability: 3.5 required, device is 3.0
+2020-02-03 03:01:30.910581: I tensorflow/compiler/jit/xla_gpu_device.cc:136] Ignoring visible XLA_GPU_JIT device. Device number is 0, reason: Internal: no supported devices found for platform CUDA
+INFO:tensorflow:Restoring parameters from /tmp/tmpymp5cnym/model.ckpt-60
 INFO:tensorflow:Running local_init_op.
 INFO:tensorflow:Done running local_init_op.
-INFO:tensorflow:Inference Time : 402.40759s
-INFO:tensorflow:Finished evaluation at 2020-02-02-19:07:22
-INFO:tensorflow:Saving dict for global step 0: accuracy = 0.9003438, accuracy_baseline = 0.9003438, auc = 0.5, auc_precision_recall = 0.5498281, average_loss = 0.6933164, global_step = 0, label/mean = 0.09965625, loss = 0.6933164, precision = 0.0, prediction/mean = 0.5, recall = 0.0
+INFO:tensorflow:Inference Time : 101.28555s
+INFO:tensorflow:Finished evaluation at 2020-02-03-03:03:11
+INFO:tensorflow:Saving dict for global step 60: accuracy = 0.90178126, accuracy_baseline = 0.90178126, auc = 0.5, auc_precision_recall = 0.5491094, average_loss = 0.32557878, global_step = 60, label/mean = 0.09821875, loss = 0.32557878, precision = 0.0, prediction/mean = 0.07250305, recall = 0.0
 WARNING:tensorflow:Issue encountered when serializing resources.
 Type is unsupported, or the types of the items don't match field type in CollectionDef. Note this is a warning and probably safe to ignore.
 '_Resource' object has no attribute 'name'
-Traceback (most recent call last):
-  File "<stdin>", line 1, in <module>
-  File "/tmp/babel-jMDcek/python-PMDUdM", line 38, in <module>
-    GBT_classifier = train_GBT_classifier(feature_columns,
-  File "/tmp/babel-jMDcek/python-PMDUdM", line 32, in train_GBT_classifier
-    clear_output()
-NameError: name 'clear_output' is not defined
+INFO:tensorflow:Saving 'checkpoint_path' summary for global step 60: /tmp/tmpymp5cnym/model.ckpt-60
+accuracy                 0.901781
+accuracy_baseline        0.901781
+auc                      0.500000
+auc_precision_recall     0.549109
+average_loss             0.325579
+label/mean               0.098219
+loss                     0.325579
+precision                0.000000
+prediction/mean          0.072503
+recall                   0.000000
+global_step             60.000000
+dtype: float64
 #+end_example
+
+* DONE GBT in XGBoost (abandoned)
+CLOSED: [2020-02-04 Tue 00:34]
+
+Load our numpy arrays into DMatrixes:
+
+#+BEGIN_SRC python :session :results output
+xgb_train = xgb.DMatrix(train_features, label=train_labels)
+xgb_validation = xgb.DMatrix(validation_features, label=validation_labels)
+#+END_SRC
+
+#+RESULTS:
+
+Set Booster parameters:
+
+#+BEGIN_SRC python :session :results output
+param = {'max_depth': 2, 'eta': 1, 'objective': 'binary:logistic'}
+param['nthread'] = 2 
+param['eval_metric'] = 'auc'
+
+# Our gpu is Cuda compute 3.0, so we can only use the CPU with XGBoost
+param['predictor'] = 'cpu_predictor'
+
+evallist = [(xgb_validation, 'eval'), (xgb_train, 'train')]
+#+END_SRC
+
+#+RESULTS:
+
+Check environment variables
+
+#+BEGIN_SRC python :session :results output
+
+#+END_SRC
+
+
+Train the model
+
+#+BEGIN_SRC python :session :results output
+num_round = 1
+xgb_model = xgb.train(param, xgb_train, num_round, evallist)
+#+END_SRC
+
+* TODO GBT in LightGBM
+
+From LightGBM documentation: best to use for larger datasets to avoid overfitting (> 10,000 rows).
+
+#+BEGIN_SRC python :session :results output
+import lightgbm as lgb
+
+# create dataset for lightgbm
+lgb_train = lgb.Dataset(train_features, train_labels)
+lgb_eval = lgb.Dataset(validation_features, validation_labels, reference=lgb_train)
+#+END_SRC
+
+#+RESULTS:
+
+Build the model
+
+#+BEGIN_SRC python :session :results output
+params = {
+    # default num_trees=100
+    'num_trees': 100,
+    'objective': 'binary',
+    'metric': 'auc',
+    'learning_rate': 0.05,
+    # Percentage of features to be used for each tree
+    'feature_fraction': 0.9,
+    # Percentage of data to be sampled for each tree
+    'bagging_fraction': 0.8,
+    # Perform bagging at every k-th tree (bagging_freq must be non-zero for bagging_fraction to be used)
+    'bagging_freq': 5,
+    # Documentation recommends using number of available cores, not number of available threads
+    'num_threads': 3
+}
+
+print('Starting training...')
+
+# train
+gbm = lgb.train(params,
+                lgb_train,
+                valid_sets=lgb_eval,
+                early_stopping_rounds=5)
+
+print('Done Training.')
+#+END_SRC
+
+#+RESULTS:
+#+begin_example
+Starting training...
+[LightGBM] [Warning] Starting from the 2.1.2 version, default value for the "boost_from_average" parameter in "binary" objective is true.
+This may cause significantly different results comparing to the previous versions of LightGBM.
+Try to set boost_from_average=false, if your old models produce bad results
+[LightGBM] [Info] Number of positive: 12878, number of negative: 115122
+[LightGBM] [Info] Total Bins 51000
+[LightGBM] [Info] Number of data: 128000, number of used features: 200
+[LightGBM] [Info] [binary:BoostFromScore]: pavg=0.100609 -> initscore=-2.190472
+[LightGBM] [Info] Start training from score -2.190472
+[1]	valid_0's auc: 0.660695
+Training until validation scores don't improve for 5 rounds
+[2]	valid_0's auc: 0.677007
+[3]	valid_0's auc: 0.693477
+[4]	valid_0's auc: 0.700085
+[5]	valid_0's auc: 0.703131
+[6]	valid_0's auc: 0.710871
+[7]	valid_0's auc: 0.718926
+[8]	valid_0's auc: 0.721378
+[9]	valid_0's auc: 0.725975
+[10]	valid_0's auc: 0.729144
+[11]	valid_0's auc: 0.73441
+[12]	valid_0's auc: 0.740965
+[13]	valid_0's auc: 0.743782
+[14]	valid_0's auc: 0.749134
+[15]	valid_0's auc: 0.752978
+[16]	valid_0's auc: 0.756099
+[17]	valid_0's auc: 0.758655
+[18]	valid_0's auc: 0.761661
+[19]	valid_0's auc: 0.763746
+[20]	valid_0's auc: 0.766656
+[21]	valid_0's auc: 0.769965
+[22]	valid_0's auc: 0.771914
+[23]	valid_0's auc: 0.77475
+[24]	valid_0's auc: 0.776519
+[25]	valid_0's auc: 0.779397
+[26]	valid_0's auc: 0.781422
+[27]	valid_0's auc: 0.783406
+[28]	valid_0's auc: 0.786332
+[29]	valid_0's auc: 0.788075
+[30]	valid_0's auc: 0.789435
+[31]	valid_0's auc: 0.791363
+[32]	valid_0's auc: 0.792688
+[33]	valid_0's auc: 0.794369
+[34]	valid_0's auc: 0.796652
+[35]	valid_0's auc: 0.79826
+[36]	valid_0's auc: 0.800336
+[37]	valid_0's auc: 0.801892
+[38]	valid_0's auc: 0.803452
+[39]	valid_0's auc: 0.804993
+[40]	valid_0's auc: 0.806662
+[41]	valid_0's auc: 0.808334
+[42]	valid_0's auc: 0.809452
+[43]	valid_0's auc: 0.810692
+[44]	valid_0's auc: 0.811903
+[45]	valid_0's auc: 0.812926
+[46]	valid_0's auc: 0.813716
+[47]	valid_0's auc: 0.814588
+[48]	valid_0's auc: 0.815627
+[49]	valid_0's auc: 0.816531
+[50]	valid_0's auc: 0.817757
+[51]	valid_0's auc: 0.818403
+[52]	valid_0's auc: 0.81959
+[53]	valid_0's auc: 0.820741
+[54]	valid_0's auc: 0.821847
+[55]	valid_0's auc: 0.822642
+[56]	valid_0's auc: 0.823743
+[57]	valid_0's auc: 0.824287
+[58]	valid_0's auc: 0.825146
+[59]	valid_0's auc: 0.826079
+[60]	valid_0's auc: 0.826825
+[61]	valid_0's auc: 0.827825
+[62]	valid_0's auc: 0.828731
+[63]	valid_0's auc: 0.829781
+[64]	valid_0's auc: 0.830431
+[65]	valid_0's auc: 0.831212
+[66]	valid_0's auc: 0.832123
+[67]	valid_0's auc: 0.832945
+[68]	valid_0's auc: 0.833694
+[69]	valid_0's auc: 0.834384
+[70]	valid_0's auc: 0.835299
+[71]	valid_0's auc: 0.835421
+[72]	valid_0's auc: 0.835996
+[73]	valid_0's auc: 0.836303
+[74]	valid_0's auc: 0.836866
+[75]	valid_0's auc: 0.837331
+[76]	valid_0's auc: 0.837997
+[77]	valid_0's auc: 0.838671
+[78]	valid_0's auc: 0.839416
+[79]	valid_0's auc: 0.840085
+[80]	valid_0's auc: 0.84068
+[81]	valid_0's auc: 0.841208
+[82]	valid_0's auc: 0.842012
+[83]	valid_0's auc: 0.842042
+[84]	valid_0's auc: 0.842754
+[85]	valid_0's auc: 0.843041
+[86]	valid_0's auc: 0.843607
+[87]	valid_0's auc: 0.844166
+[88]	valid_0's auc: 0.844825
+[89]	valid_0's auc: 0.845227
+[90]	valid_0's auc: 0.845791
+[91]	valid_0's auc: 0.846074
+[92]	valid_0's auc: 0.846825
+[93]	valid_0's auc: 0.847057
+[94]	valid_0's auc: 0.847863
+[95]	valid_0's auc: 0.848039
+[96]	valid_0's auc: 0.848477
+[97]	valid_0's auc: 0.848895
+[98]	valid_0's auc: 0.849389
+[99]	valid_0's auc: 0.849956
+[100]	valid_0's auc: 0.850412
+Did not meet early stopping. Best iteration is:
+[100]	valid_0's auc: 0.850412
+Done Training.
+#+end_example
+
+Predict
+
+#+BEGIN_SRC python :session :results output
+print('Starting predicting...')
+
+# predict
+y_pred = gbm.predict(X_test, num_iteration=gbm.best_iteration)
+
+# eval
+print('The rmse of prediction is:', mean_squared_error(y_test, y_pred) ** 0.5)
+#+END_SRC
+
+
+
+
 
 * TODO Feature Engineering
 
@@ -699,5 +969,4 @@ NameError: name 'clear_output' is not defined
 - Identify most import features (functions, and via decision trees)
 - PCA then 1+2?
 
-  
 * TODO LSTM? 
