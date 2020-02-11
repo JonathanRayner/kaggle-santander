@@ -125,8 +125,6 @@ rows_with_duplicates = raw_dataframe[unique_row_values != 201]
 
 # note which entries are duplicated within a row 
 duplicate_entries_boolean = rows_with_duplicates.apply(lambda x: x.duplicated(keep=False), axis = 1)
-
-print(rows_with_duplicates, duplicate_entries_boolean, sep='\n')
 #+END_SRC
 
 #+RESULTS:
@@ -161,13 +159,13 @@ target    var_0   var_1    var_2  ...  var_196  var_197  var_198  var_199
 [12975 rows x 201 columns]
 #+end_example
 
-
+Let's look at repeated values across columns and their corresponding features:
 
 #+BEGIN_SRC python :session :results output 
-print(rows_with_duplicates.loc[14, duplicate_entries_boolean.loc[14]==True])
 
 for row in rows_with_duplicates.index:
-
+    
+    # For each row, 
     print(rows_with_duplicates.loc[row,
                                     duplicate_entries_boolean.loc[row] == True])
 #+END_SRC
