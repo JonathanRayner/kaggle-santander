@@ -7932,7 +7932,22 @@ plt.close
 [[file:feature_importance.png]]
 
 
+* TODO Things I will do before calling project end
 
-* TODO Could also try other Categorical encoding e.g. from Sklearn
+** TODO Double check baseline without statistical features vs. with
 
-See also https://catboost.ai/docs/concepts/python-reference_catboostclassifier.html, also look to see if LightGBM has option to specify catgorical features.
+** TODO Double check baseline without one-hot features vs. with (10/12 bins or whichever performed best)
+
+** TODO Submit best baseline to Kaggle, determine whether K-fold CV needed
+
+** TODO Check number of unique entries in entire dataframe after rounding 
+
+** TODO Try LightGBM categorical for bin and one-hot. 
+
+** TODO Try CatBoost with categorical
+
+** TODO Try NN with stat features and/or categorical features
+
+** TODO Ensemble best two or three model predictions from these
+
+
