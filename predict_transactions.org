@@ -15556,111 +15556,184 @@ plt.close
 To try get our model to notice the importance of repeated values we can try adding new features where every dataframe entry is replaced by its count in train, or its count in each column of train (we can ignore an overall normalization factor as we'll probably rescale things anyway). One issue: we need to be able to do this on unseen data, which may not include the exact same numbers that are seen in train. Perhaps we can tell new entries to be mapped to the closest entry that has been seen before in train. We could also try binning.
 
 #+BEGIN_SRC python :session :results output
+
+# we need to convert everything to ints to do a dictionary-like mapping and then convert back at the end, or else we have problems with floating point errors later. So multiply dataframe by an appropriate power of 10, then convert to int. The power of 10 just changes how fine our binning is.
+def bin_as_int(dataframe, decimals):
+
+    # multiply 'dataframe' by 10 to the power 'decimals'
+    binned_dataframe = dataframe*(10**decimals)
+
+    # round away all decimal places and convert to int
+    binned_dataframe = binned_dataframe.round(decimals=0).astype(int)
+
+    return binned_dataframe
+
+def create_count_lookup(dataframe):
+    # flatten dataframe into a single series, then count values and sort by values
+    count_lookup = dataframe.melt()['value'].value_counts().sort_index()
+
+    # normalize
+    count_lookup = count_lookup/count_lookup.max()
+
+    # cut off very small values by rounding, then taking nonzero entries. Reduces size of lookup count_lookup
+    # choose convention of 4 decimal places, because this is level of precision of raw data
+    count_lookup = count_lookup.round(decimals=4)
+    count_lookup = count_lookup[count_lookup != 0]
+
+    # linearly interpolate any missing rows
+    # create new index with no missing values from first index to last
+    interpolate_index = pd.RangeIndex(start=count_lookup.index[0], stop=count_lookup.index[-1] + 1)
+
+    # fill in all missing indices with NaN
+    count_lookup = count_lookup.reindex(index=interpolate_index)
+
+    # replace NaNs with linear interpolated values
+    count_lookup = count_lookup.interpolate()
+
+    return count_lookup
+
+
 train_copy = train.copy()
 validation_copy = validation.copy()
 
 # debating between round data to one or two decimal places. we'll start imprecise for performance, then go from there
 # number of decimal places we'll round everything to
 decimals = 1
-
-# we need to convert everything to ints to do a dictionary-like mapping and then convert back at the end, or else we have problems with floating point errors.
-def power10_to_int(dataframe, decimals):
-
-    # multiply 'dataframe' by 10 to the power 'decimals'
-    dataframe = dataframe*(10**decimals)
-
-    # round away all decimal places and convert to int
-    dataframe = dataframe.round(decimals=0).astype(int)
-
-    return dataframe
-
-train_copy = power10_to_int(dataframe=train_copy, decimals=decimals)
-validation_copy = power10_to_int(dataframe=validation_copy, decimals=decimals)
-
-# flatten dataframe into a single series, then count values and sort by values
-train_copy = train_copy.melt()['value'].value_counts().sort_index()
-
-
-# normalize
-train_copy = train_copy/train_copy.max()
-
-# determine cutoff for integers (this is equivalent to setting very small numbers to zero, because later we will normalize and we may as well get ride of these values now to reduce computation time)
-
-# cut off very small values by rounding, then taking nonzero entries
-# choose convention of 4 decimal places, because this is level of precision of raw data
-train_copy = train_copy.round(decimals=4)
-train_copy = train_copy[train_copy != 0]
-
-print(train_copy.head())
-print(train_copy.size)
-
-# # lol = lol.interpolate
-
-# # fill in any missing values with NaN
-# lol1 = lol.index*10
-
-# print(lol1)
 #+END_SRC
 
 #+RESULTS:
-: -619    0.0001
-: -616    0.0001
-: -614    0.0001
-: -613    0.0001
-: -612    0.0001
-: Name: value, dtype: float64
-: 1187
  
-Plot test
+
+#+BEGIN_SRC python :session :results output
+lol = validation.copy()
+lol = power10_to_int(dataframe=lol, decimals=decimals)
+print(lol.head())
+
+practice = train_copy.copy()
+print(practice)
+
+lol = lol.apply(lambda x: x.map(practice).fillna(value=0))
+
+print(lol.head())
+
+#+END_SRC
+
+#+RESULTS:
+#+begin_example
+var_0  var_1  var_2  var_3  var_4  var_5  ...  var_194  var_195  var_196  var_197  var_198  var_199
+13067     140     37    106     80    100    -91  ...      210      -26       40       94      174     -137
+60450     111    -79     85     82    106    -51  ...      191       32      -34       90      187      122
+168236     78      4    104     75    116    -40  ...      189        8        7      102      114       50
+65355      78     17    105     50    104    -44  ...      207      -10       64       91      146     -161
+90314     183    -59    126     60     71    -39  ...      186      -31       68       88      167      130
+
+[5 rows x 200 columns]
+-619    0.0001
+-618    0.0001
+-617    0.0001
+-616    0.0001
+-615    0.0001
+         ...  
+ 589    0.0001
+ 590    0.0001
+ 591    0.0001
+ 592    0.0001
+ 593    0.0001
+Name: value, Length: 1213, dtype: float64
+         var_0   var_1   var_2   var_3   var_4   var_5  ...  var_194  var_195  var_196  var_197  var_198  var_199
+13067   0.5275  0.4536  0.4160  0.4269  0.4046  0.0761  ...   0.0978   0.2071   0.5114   0.4214   0.1676   0.0382
+60450   0.4458  0.0891  0.4371  0.4343  0.4160  0.1314  ...   0.1338   0.4556   0.1794   0.4322   0.1404   0.4639
+168236  0.4349  0.4428  0.4107  0.4333  0.4656  0.1586  ...   0.1359   0.4576   0.4589   0.4118   0.4680   1.0000
+65355   0.4349  0.4607  0.4118  1.0000  0.4107  0.1494  ...   0.1023   0.2801   0.5156   0.4313   0.3175   0.0260
+90314   0.1458  0.1170  0.4515  0.5524  0.5886  0.1624  ...   0.1422   0.1882   0.5921   0.4364   0.1837   0.3970
+
+[5 rows x 200 columns]
+#+end_example
+
+
+
 
 practice filling in missing values in dataframe
 
 #+BEGIN_SRC python :session :results output
 # select some random row indices
-practice_index = np.random.randint(100, size = 10)
+practice_index = np.random.randint(540,560, size = 10)
+practice_index = np.unique(practice_index)
 
 # take these rows and sort so index is increasing
-practice = test.iloc[practice_index].sort_index().round(1)
+practice = train_copy.iloc[practice_index]
 print(practice_index, practice, sep='\n')
 
 # create new index from first to last of old index, inclusive, with step_size intervals
-step_size = 0.1 
-new_index = np.arange(practice.index[0], practice.index[-1] + step_size, step_size)
+interpolate_index = pd.RangeIndex(start=practice.index[0], stop=practice.index[-1] + 1)
 
-print(practice.index[0], practice.index[-1], practice.index[-1] + step_size)
-print(type(practice.index[0]), type(practice.index[-1]), type(step_size))
-print(new_index)
+print(interpolate_index)
+
+# fill in all missing indices with NaN
+practice = practice.reindex(index=interpolate_index)
+
+print(practice)
+
+# replace NaNs with linear interpolated values
+practice = practice.interpolate()
+print(practice)
+
+
+# print(practice.index[0], practice.index[-1], practice.index[-1] + step_size)
+# print(type(practice.index[0]), type(practice.index[-1]), type(step_size))
+# print(new_index)
 #+END_SRC
 
 #+RESULTS:
 #+begin_example
-[17 23 92 21 78 41 86 31 33  5]
--78.7    1
--73.8    3
--73.0    1
--72.5    1
--71.2    2
--71.0    1
--69.5    4
--65.5    1
--64.7    3
--64.1    9
-Name: value, dtype: int64
--78.7 -64.1 -63.99999999999999
-<class 'numpy.float64'> <class 'numpy.float64'> <class 'float'>
-[-78.7 -78.6 -78.5 -78.4 -78.3 -78.2 -78.1 -78.  -77.9 -77.8 -77.7 -77.6
- -77.5 -77.4 -77.3 -77.2 -77.1 -77.  -76.9 -76.8 -76.7 -76.6 -76.5 -76.4
- -76.3 -76.2 -76.1 -76.  -75.9 -75.8 -75.7 -75.6 -75.5 -75.4 -75.3 -75.2
- -75.1 -75.  -74.9 -74.8 -74.7 -74.6 -74.5 -74.4 -74.3 -74.2 -74.1 -74.
- -73.9 -73.8 -73.7 -73.6 -73.5 -73.4 -73.3 -73.2 -73.1 -73.  -72.9 -72.8
- -72.7 -72.6 -72.5 -72.4 -72.3 -72.2 -72.1 -72.  -71.9 -71.8 -71.7 -71.6
- -71.5 -71.4 -71.3 -71.2 -71.1 -71.  -70.9 -70.8 -70.7 -70.6 -70.5 -70.4
- -70.3 -70.2 -70.1 -70.  -69.9 -69.8 -69.7 -69.6 -69.5 -69.4 -69.3 -69.2
- -69.1 -69.  -68.9 -68.8 -68.7 -68.6 -68.5 -68.4 -68.3 -68.2 -68.1 -68.
- -67.9 -67.8 -67.7 -67.6 -67.5 -67.4 -67.3 -67.2 -67.1 -67.  -66.9 -66.8
- -66.7 -66.6 -66.5 -66.4 -66.3 -66.2 -66.1 -66.  -65.9 -65.8 -65.7 -65.6
- -65.5 -65.4 -65.3 -65.2 -65.1 -65.  -64.9 -64.8 -64.7 -64.6 -64.5 -64.4
- -64.3 -64.2 -64.1 -64. ]
+[542 543 544 546 547 550 552 556 558]
+-70    0.0997
+-69    0.1011
+-68    0.1032
+-66    0.1071
+-65    0.1075
+-62    0.1128
+-60    0.1156
+-56    0.1229
+-54    0.1276
+Name: value, dtype: float64
+RangeIndex(start=-70, stop=-53, step=1)
+-70    0.0997
+-69    0.1011
+-68    0.1032
+-67       NaN
+-66    0.1071
+-65    0.1075
+-64       NaN
+-63       NaN
+-62    0.1128
+-61       NaN
+-60    0.1156
+-59       NaN
+-58       NaN
+-57       NaN
+-56    0.1229
+-55       NaN
+-54    0.1276
+Name: value, dtype: float64
+-70    0.099700
+-69    0.101100
+-68    0.103200
+-67    0.105150
+-66    0.107100
+-65    0.107500
+-64    0.109267
+-63    0.111033
+-62    0.112800
+-61    0.114200
+-60    0.115600
+-59    0.117425
+-58    0.119250
+-57    0.121075
+-56    0.122900
+-55    0.125250
+-54    0.127600
+Name: value, dtype: float64
 #+end_example
 
 
