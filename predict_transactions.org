@@ -15556,49 +15556,113 @@ plt.close
 To try get our model to notice the importance of repeated values we can try adding new features where every dataframe entry is replaced by its count in train, or its count in each column of train (we can ignore an overall normalization factor as we'll probably rescale things anyway). One issue: we need to be able to do this on unseen data, which may not include the exact same numbers that are seen in train. Perhaps we can tell new entries to be mapped to the closest entry that has been seen before in train. We could also try binning.
 
 #+BEGIN_SRC python :session :results output
+class FrequencyFeatures:
+    """
+    Tools to create and apply a lookup table that maps dataframe entries to the frequency of those entries in the training data. Frequencies are normalized so that maximum frequency = 1.
 
-# we need to convert everything to ints to do a dictionary-like mapping and then convert back at the end, or else we have problems with floating point errors later. So multiply dataframe by an appropriate power of 10, then convert to int. The power of 10 just changes how fine our binning is.
-def bin_as_int(dataframe, decimals):
+    Attributes:
+        lookup (pandas dataframe): Dataframe were indices are entries, values are corresponding frequencies.
+        decimals (int): Number of decimal places of desired precision when rounding and binning for 'fit' and 'transform'
+    """
 
-    # multiply 'dataframe' by 10 to the power 'decimals'
-    binned_dataframe = dataframe*(10**decimals)
+    def __init__(self):
+        self.lookup = None
+        self.decimals = None
 
-    # round away all decimal places and convert to int
-    binned_dataframe = binned_dataframe.round(decimals=0).astype(int)
+    def bin_as_int(self, dataframe, decimals):
+        """
+        Rounds dataframe entries to desired level of precision (as a form of binning), multiplies by appropriate power of 10 and converts to ints to avoid problems with floating point errors later.
 
-    return binned_dataframe
+        Args:
+            dataframe (pandas dataframe): Dataframe to be binned as int.
+            decimals (int): Number of decimal places of desired precision when rounding.
 
-def create_count_lookup(dataframe):
-    # flatten dataframe into a single series, then count values and sort by values
-    count_lookup = dataframe.melt()['value'].value_counts().sort_index()
+        Returns:
+            pandas dataframe of ints
+        """
+        # multiply 'dataframe' by 10 to the power 'decimals'
+        binned_dataframe = dataframe*(10**decimals)
 
-    # normalize
-    count_lookup = count_lookup/count_lookup.max()
+        # round away all decimal places and convert to int
+        binned_dataframe = binned_dataframe.round(decimals=0).astype(int)
 
-    # cut off very small values by rounding, then taking nonzero entries. Reduces size of lookup count_lookup
-    # choose convention of 4 decimal places, because this is level of precision of raw data
-    count_lookup = count_lookup.round(decimals=4)
-    count_lookup = count_lookup[count_lookup != 0]
+        return binned_dataframe
 
-    # linearly interpolate any missing rows
-    # create new index with no missing values from first index to last
-    interpolate_index = pd.RangeIndex(start=count_lookup.index[0], stop=count_lookup.index[-1] + 1)
+    def fit(self, train_dataframe, decimals):
+        """
+        Creates frequency lookup dataframe from training data and stores it as a class variable, so that it can be used to transform any dataframe. Frequencies are normalized so that max frequency = 1.
 
-    # fill in all missing indices with NaN
-    count_lookup = count_lookup.reindex(index=interpolate_index)
+        Args:
+            train_dataframe (pandas dataframe): Dataframe to use to create lookup table.
+            decimals (int): Number of decimal places of desired precision when rounding.
 
-    # replace NaNs with linear interpolated values
-    count_lookup = count_lookup.interpolate()
+        Returns:
+            None
+        """
+        # store decimals as class variable to be used later in 'transform'
+        self.decimals = decimals
 
-    return count_lookup
+        # bin train_dataframe into bins of int type
+        binned_dataframe = self.bin_as_int(dataframe=train_dataframe, decimals=self.decimals)
 
+        # flatten 'binned_dataframe' into a single series, then count values and sort by values
+        lookup = binned_dataframe.melt()['value'].value_counts().sort_index()
+
+        # normalize by maximum
+        lookup = lookup/lookup.max()
+
+        # cut off very small values by rounding, then taking nonzero entries. Reduces size of lookup dataframe
+        # choose convention of 4 decimal places, because this is level of precision of raw data in this problem
+        lookup = lookup.round(decimals=4)
+        lookup = lookup[lookup != 0]
+
+        # linearly interpolate any missing rows, so that we can handle any unseen data
+        # create new index with no missing values from first index to last
+        filled_index = pd.RangeIndex(start=lookup.index[0], stop=lookup.index[-1] + 1)
+
+        # fill in all missing indices with NaN
+        lookup = lookup.reindex(index=filled_index)
+
+        # replace NaNs with linear interpolated values
+        lookup = lookup.interpolate()
+
+        # store as a class variable
+        self.lookup = lookup
+
+        return None
+
+    def transform(self, dataframe):
+        """
+        Creates a dataframe from 'dataframe' where entries have been mapped to frequencies according to 'self.lookup'.
+
+        Args:
+            dataframe (pandas dataframe): Dataframe to be transformed.
+
+        Returns:
+            Dataframe transformed according to 'self.lookup'.
+        """
+        dataframe = self.bin_as_int(dataframe=dataframe, decimals=self.decimals)
+
+        # transform lol according to lookup, then replace any missing values with zero (these will be on the tails of the lookup distribution)
+        # applying transformation column-wise using .apply() and .map() is a performance improvement vs. other methods such as using .replace()
+        dataframe = dataframe.apply(lambda x: x.map(self.lookup)).fillna(value=0)
+
+        return dataframe
 
 train_copy = train.copy()
 validation_copy = validation.copy()
 
+# fit and transform
+frequency_features = FrequencyFeatures()
+
 # debating between round data to one or two decimal places. we'll start imprecise for performance, then go from there
 # number of decimal places we'll round everything to
 decimals = 1
+
+frequency_features.fit(train_dataframe=train_copy, decimals=decimals)
+
+train_copy = frequency_features.transform(dataframe=train_copy)
+validation_copy = frequency_features.transform(dataframe=validation_copy)
 #+END_SRC
 
 #+RESULTS:
@@ -15606,13 +15670,16 @@ decimals = 1
 
 #+BEGIN_SRC python :session :results output
 lol = validation.copy()
-lol = power10_to_int(dataframe=lol, decimals=decimals)
+lol = bin_as_int(dataframe=lol, decimals=decimals)
 print(lol.head())
 
-practice = train_copy.copy()
-print(practice)
+# create lookup
+lookup = create_count_lookup(dataframe=train_copy.copy(), decimals=decimals) 
+print(lookup.get)
 
-lol = lol.apply(lambda x: x.map(practice).fillna(value=0))
+# transform lol according to lookup, then replace any missing values with zero (these will be on the tails of the lookup distribution) 
+# applying transformation column-wise using .apply() and .map() is a performance improvement vs. other methods such as using .replace()
+lol = lol.apply(lambda x: x.map(lookup)).fillna(value=0)
 
 print(lol.head())
 
@@ -15628,7 +15695,7 @@ var_0  var_1  var_2  var_3  var_4  var_5  ...  var_194  var_195  var_196  var_19
 90314     183    -59    126     60     71    -39  ...      186      -31       68       88      167      130
 
 [5 rows x 200 columns]
--619    0.0001
+<bound method NDFrame.get of -619    0.0001
 -618    0.0001
 -617    0.0001
 -616    0.0001
@@ -15639,7 +15706,7 @@ var_0  var_1  var_2  var_3  var_4  var_5  ...  var_194  var_195  var_196  var_19
  591    0.0001
  592    0.0001
  593    0.0001
-Name: value, Length: 1213, dtype: float64
+Name: value, Length: 1213, dtype: float64>
          var_0   var_1   var_2   var_3   var_4   var_5  ...  var_194  var_195  var_196  var_197  var_198  var_199
 13067   0.5275  0.4536  0.4160  0.4269  0.4046  0.0761  ...   0.0978   0.2071   0.5114   0.4214   0.1676   0.0382
 60450   0.4458  0.0891  0.4371  0.4343  0.4160  0.1314  ...   0.1338   0.4556   0.1794   0.4322   0.1404   0.4639
