@@ -1,3 +1,4 @@
+import pandas as pd
 import numpy as np
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import roc_auc_score
@@ -7,7 +8,7 @@ import tensorflow as tf
 from tensorflow import keras
 
 # import preprocessing and plotting helper functions
-import nn_functions
+import nn_functions as nnf
 
 # Import and split the data
 train = pd.read_csv('train.csv')
@@ -25,7 +26,6 @@ validation_labels = validation.pop('target')
 train_scaled = train.copy()
 scaler = MinMaxScaler()
 train_scaled = scaler.fit_transform(train_scaled)
-train_scaled = scaler.fit_transform(train_scaled)
 train_scaled = pd.DataFrame(train_scaled).reset_index(drop=True)
 
 validation_scaled = validation.copy()
@@ -33,10 +33,10 @@ validation_scaled = scaler.transform(validation_scaled)
 validation_scaled = pd.DataFrame(validation_scaled).reset_index(drop=True)
 
 # Create frequency features
-frequency_features = FrequencyFeatures()
+frequency_features = nnf.FrequencyFeatures()
 
 # number of decimal places we'll round everything to
-decimals = 4
+decimals = 1
 
 frequency_features.fit(train_dataframe=train, decimals=decimals)
 
@@ -51,21 +51,21 @@ validation = pd.concat([validation_scaled, validation_new_features], axis=1)
 # majority_class_ratio = 7.0
 # oversample_rate = 0.25
 
-# train, train_labels = change_class_balance(train_dataframe=train,
+# train, train_labels = nnf.change_class_balance(train_dataframe=train,
 #                                                    train_labels=train_labels,
 #                                                    oversample_rate=oversample_rate,
 #                                                    majority_class_ratio=majority_class_ratio)
 
 # tensorflow needs numpy arrays
-train = np.array(train_copy)
-validation = np.array(validation_copy)
+train = np.array(train)
+validation = np.array(validation)
 
 train_labels = np.array(train_labels)
 validation_labels = np.array(validation_labels)
 
 # reshape so that new features are paired with corresponding original features
-train = pair_features(train)
-validation = pair_features(validation)
+train = nnf.pair_features(train)
+validation = nnf.pair_features(validation)
 
 # clear keras session so that we can rerun without errors
 tf.keras.backend.clear_session()
@@ -81,19 +81,19 @@ METRICS = [
     keras.metrics.AUC(name='auc'),
 ]
 
-N_TRAIN = train_copy.shape[0]
-BATCH_SIZE = 64
-EPOCHS = 100
+N_TRAIN = train.shape[0]
+BATCH_SIZE = 2048
+EPOCHS = 500
 STEPS_PER_EPOCH = N_TRAIN//BATCH_SIZE
 
 # take some ideas from https://www.tensorflow.org/tutorials/keras/overfit_and_underfit
 
 # learning rate decay
 # initial learning rate
-initial_rate = 0.01
+initial_rate = 0.005
 
 # 'decay_factor' = x means learning rate decays to 1/2 of the 'initial_rate' after x epochs, 1/3 after 2x epochs, etc.
-decay_factor = 10
+decay_factor = 20
 
 lr_schedule = tf.keras.optimizers.schedules.InverseTimeDecay(
     initial_rate,
@@ -102,7 +102,7 @@ lr_schedule = tf.keras.optimizers.schedules.InverseTimeDecay(
     staircase=False)
 
 def get_optimizer():
-    return tf.keras.optimizers.Adam(lr_schedule, clipnorm=1.0)
+    return tf.keras.optimizers.Adam(lr_schedule)
 
 # model architecture
 def make_model(train_features, metrics=METRICS):
@@ -112,8 +112,13 @@ def make_model(train_features, metrics=METRICS):
                            kernel_regularizer=keras.regularizers.l2(0.0001),
                            activation='elu',
                            input_shape=(train_features.shape[1], train_features.shape[2])),
+        keras.layers.Dropout(0.5),
         keras.layers.Dense(32, kernel_regularizer=keras.regularizers.l2(0.0001),
                      activation='elu'),
+        keras.layers.Dropout(0.2),
+        # keras.layers.Dense(256, kernel_regularizer=keras.regularizers.l2(0.0001),
+        #              activation='elu'),
+        # keras.layers.Dropout(0.5),
         # keras.layers.Dense(128, kernel_regularizer=keras.regularizers.l2(0.0001),
         #              activation='elu'),
         # keras.layers.Dropout(0.5),
@@ -145,15 +150,16 @@ def make_model(train_features, metrics=METRICS):
         metrics=metrics)
     return model
 
-early_stopping = tf.keras.callbacks.EarlyStopping(
-    monitor='val_auc',
-    verbose=1,
-    patience=10,
-    mode='max',
-    restore_best_weights=True)
+# uncomment here and in model.fit to use early stopping
+# early_stopping = tf.keras.callbacks.EarlyStopping(
+#     monitor='val_auc',
+#     verbose=1,
+#     patience=10,
+#     mode='max',
+#     restore_best_weights=True)
 
 # initialize the model
-model = make_model(train_copy)
+model = make_model(train)
 
 # train
 # Features and labels input as numpy arrays
@@ -166,4 +172,4 @@ model_history = model.fit(
     validation_data=(validation, validation_labels))
 
 # Display metrics plot
-plot_metrics(model_history)
+nnf.plot_metrics(model_history)

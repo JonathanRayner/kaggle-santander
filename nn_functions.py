@@ -1,3 +1,7 @@
+import pandas as pd
+import numpy as np
+from matplotlib import pyplot as plt
+
 class FrequencyFeatures:
     """
     Tools to create and apply a lookup table that maps dataframe entries to the frequency of those entries in the training data. Frequencies are normalized so that maximum frequency = 1.
