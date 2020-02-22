@@ -3,7 +3,7 @@ import numpy as np
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import roc_auc_score
 from matplotlib import pyplot as plt
-from sklearn.preprocessing import MinMaxScaler
+from sklearn.preprocessing import StandardScaler
 import tensorflow as tf
 from tensorflow import keras
 
@@ -22,9 +22,9 @@ train_labels = train.pop('target')
 validation_labels = validation.pop('target')
 
 # Preprocessing
-# make a copy of trainand and validation, scaled to [0,1]
+# make a copy of trainand and validation, scaled by z-score
 train_scaled = train.copy()
-scaler = MinMaxScaler()
+scaler = StandardScaler()
 train_scaled = scaler.fit_transform(train_scaled)
 train_scaled = pd.DataFrame(train_scaled).reset_index(drop=True)
 
@@ -36,7 +36,7 @@ validation_scaled = pd.DataFrame(validation_scaled).reset_index(drop=True)
 frequency_features = nnf.FrequencyFeatures()
 
 # number of decimal places we'll round everything to
-decimals = 1
+decimals = 4
 
 frequency_features.fit(train_dataframe=train, decimals=decimals)
 
@@ -82,40 +82,50 @@ METRICS = [
 ]
 
 N_TRAIN = train.shape[0]
-BATCH_SIZE = 2048
-EPOCHS = 500
+BATCH_SIZE = 64
+EPOCHS = 100
 STEPS_PER_EPOCH = N_TRAIN//BATCH_SIZE
 
 # take some ideas from https://www.tensorflow.org/tutorials/keras/overfit_and_underfit
 
 # learning rate decay
 # initial learning rate
-initial_rate = 0.005
+initial_rate = 0.001
 
 # 'decay_factor' = x means learning rate decays to 1/2 of the 'initial_rate' after x epochs, 1/3 after 2x epochs, etc.
 decay_factor = 20
-
 lr_schedule = tf.keras.optimizers.schedules.InverseTimeDecay(
     initial_rate,
     decay_steps=STEPS_PER_EPOCH*decay_factor,
     decay_rate=1,
     staircase=False)
 
-def get_optimizer():
-    return tf.keras.optimizers.Adam(lr_schedule)
+def decay_optimizer():
+    return tf.keras.optimizers.Adam(lr_schedule, clipnorm=1.0)
 
+def baseline_optimizer():
+    return tf.keras.optimizers.Adam(lr=0.001, clipnorm=1.0)
+
+# old model on (400,) input shape was 256 128 128 64 32 16 16 16 dropout 0.5 0.5 0.5 0.4 0.3 0.2 0.2 0.2. Hasn't worked well here
+# 256 128 64 32, dropout 0.5 0.5 0.2 0.2 has some promise auc 0.8977 after 7 epochs, still far from overfit
 # model architecture
 def make_model(train_features, metrics=METRICS):
     model = keras.Sequential([
         # Note input shape (200, 2) when we pair features with frequency features
-        keras.layers.Dense(64,
+        keras.layers.Dense(256,
                            kernel_regularizer=keras.regularizers.l2(0.0001),
-                           activation='elu',
+                           activation='relu',
                            input_shape=(train_features.shape[1], train_features.shape[2])),
         keras.layers.Dropout(0.5),
-        keras.layers.Dense(32, kernel_regularizer=keras.regularizers.l2(0.0001),
-                     activation='elu'),
-        keras.layers.Dropout(0.2),
+        keras.layers.Dense(256, kernel_regularizer=keras.regularizers.l2(0.0001),
+                     activation='relu'),
+        keras.layers.Dropout(0.5),
+        keras.layers.Dense(256, kernel_regularizer=keras.regularizers.l2(0.0001),
+                     activation='relu'),
+        keras.layers.Dropout(0.5),
+        keras.layers.Dense(256, kernel_regularizer=keras.regularizers.l2(0.0001),
+                     activation='relu'),
+        keras.layers.Dropout(0.5),
         # keras.layers.Dense(256, kernel_regularizer=keras.regularizers.l2(0.0001),
         #              activation='elu'),
         # keras.layers.Dropout(0.5),
@@ -145,7 +155,7 @@ def make_model(train_features, metrics=METRICS):
         ])
 
     model.compile(
-        optimizer=get_optimizer(),
+        optimizer=decay_optimizer(),
         loss=keras.losses.BinaryCrossentropy(),
         metrics=metrics)
     return model
