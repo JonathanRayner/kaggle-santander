@@ -9,6 +9,7 @@ from tensorflow import keras
 
 # import preprocessing and plotting helper functions
 import nn_functions as nnf
+import test
 
 # Import and split the data
 train = pd.read_csv('train.csv')
@@ -36,7 +37,7 @@ validation_scaled = pd.DataFrame(validation_scaled).reset_index(drop=True)
 frequency_features = nnf.FrequencyFeatures()
 
 # number of decimal places we'll round everything to
-decimals = 4
+decimals = 1
 
 frequency_features.fit(train_dataframe=train, decimals=decimals)
 
@@ -47,8 +48,9 @@ validation_new_features = frequency_features.transform(dataframe=validation).res
 train = pd.concat([train_scaled, train_new_features], axis=1)
 validation = pd.concat([validation_scaled, validation_new_features], axis=1)
 
+# have had good results in the past with 7.0 0.25, but class balancing doesn't seem to work now
 # uncomment to use class balancing
-# majority_class_ratio = 7.0
+# majority_class_ratio = 3.0
 # oversample_rate = 0.25
 
 # train, train_labels = nnf.change_class_balance(train_dataframe=train,
@@ -90,10 +92,10 @@ STEPS_PER_EPOCH = N_TRAIN//BATCH_SIZE
 
 # learning rate decay
 # initial learning rate
-initial_rate = 0.001
+initial_rate = 0.002
 
 # 'decay_factor' = x means learning rate decays to 1/2 of the 'initial_rate' after x epochs, 1/3 after 2x epochs, etc.
-decay_factor = 20
+decay_factor = 10
 lr_schedule = tf.keras.optimizers.schedules.InverseTimeDecay(
     initial_rate,
     decay_steps=STEPS_PER_EPOCH*decay_factor,
@@ -106,8 +108,13 @@ def decay_optimizer():
 def baseline_optimizer():
     return tf.keras.optimizers.Adam(lr=0.001, clipnorm=1.0)
 
+# wu 2
+# with column features 64 32 no dropout, standard 0.001 lr, decimals=4, 0.8828 auc after 50 epochs. So I can't reproduce 5th place architecture's results without exploiting data leakage
 # old model on (400,) input shape was 256 128 128 64 32 16 16 16 dropout 0.5 0.5 0.5 0.4 0.3 0.2 0.2 0.2. Hasn't worked well here
 # 256 128 64 32, dropout 0.5 0.5 0.2 0.2 has some promise auc 0.8977 after 7 epochs, still far from overfit
+# 256 256 256 256 dropout all 0.5 auc 0.8994 26 epochs, still far from overfit, 5 min per epoch
+# 256 128 64 64 64 64 64 32 32 32 0.5 0.5 0.3 - 0.3 0.2 - 0.2 dataframe frequencies auc 0.8931 15 epochs
+# 256 128 128 128 64 32 0.5 0.5 - 0.5 0.2 0.2 dataframe frequencies auc 0.8950 26 epochs loss function barely increasing
 # model architecture
 def make_model(train_features, metrics=METRICS):
     model = keras.Sequential([
@@ -117,39 +124,15 @@ def make_model(train_features, metrics=METRICS):
                            activation='relu',
                            input_shape=(train_features.shape[1], train_features.shape[2])),
         keras.layers.Dropout(0.5),
-        keras.layers.Dense(256, kernel_regularizer=keras.regularizers.l2(0.0001),
+        keras.layers.Dense(128, kernel_regularizer=keras.regularizers.l2(0.0001),
                      activation='relu'),
         keras.layers.Dropout(0.5),
-        keras.layers.Dense(256, kernel_regularizer=keras.regularizers.l2(0.0001),
+        keras.layers.Dense(64, kernel_regularizer=keras.regularizers.l2(0.0001),
                      activation='relu'),
-        keras.layers.Dropout(0.5),
-        keras.layers.Dense(256, kernel_regularizer=keras.regularizers.l2(0.0001),
+        keras.layers.Dropout(0.2),
+        keras.layers.Dense(32, kernel_regularizer=keras.regularizers.l2(0.0001),
                      activation='relu'),
-        keras.layers.Dropout(0.5),
-        # keras.layers.Dense(256, kernel_regularizer=keras.regularizers.l2(0.0001),
-        #              activation='elu'),
-        # keras.layers.Dropout(0.5),
-        # keras.layers.Dense(128, kernel_regularizer=keras.regularizers.l2(0.0001),
-        #              activation='elu'),
-        # keras.layers.Dropout(0.5),
-        # keras.layers.Dense(128, kernel_regularizer=keras.regularizers.l2(0.0001),
-        #              activation='elu'),
-        # keras.layers.Dropout(0.5),
-        # keras.layers.Dense(64, kernel_regularizer=keras.regularizers.l2(0.0001),
-        #              activation='elu'),
-        # keras.layers.Dropout(0.4),
-        # keras.layers.Dense(32, kernel_regularizer=keras.regularizers.l2(0.0001),
-        #              activation='elu'),
-        # keras.layers.Dropout(0.3),
-        # keras.layers.Dense(16, kernel_regularizer=keras.regularizers.l2(0.0001),
-        #              activation='elu'),
-        # keras.layers.Dropout(0.2),
-        # keras.layers.Dense(16, kernel_regularizer=keras.regularizers.l2(0.0001),
-        #              activation='elu'),
-        # keras.layers.Dropout(0.2),
-        # keras.layers.Dense(16, kernel_regularizer=keras.regularizers.l2(0.0001),
-        #              activation='elu'),
-        # keras.layers.Dropout(0.2),
+        keras.layers.Dropout(0.2),
         keras.layers.Flatten(),
         keras.layers.Dense(1, activation='sigmoid')
         ])
@@ -171,6 +154,11 @@ def make_model(train_features, metrics=METRICS):
 # initialize the model
 model = make_model(train)
 
+# Let's try with class weights
+num_pos = np.count_nonzero(train_labels)
+num_neg = N_TRAIN - num_pos
+class_weight = {0: N_TRAIN/(2.0*num_neg) , 1: N_TRAIN/(2.0*num_pos)}
+
 # train
 # Features and labels input as numpy arrays
 model_history = model.fit(
@@ -178,6 +166,7 @@ model_history = model.fit(
     train_labels,
     batch_size=BATCH_SIZE,
     epochs=EPOCHS,
+    class_weight=class_weight,
     # callbacks=[early_stopping],
     validation_data=(validation, validation_labels))
 
