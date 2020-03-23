@@ -1,19 +1,27 @@
-- [Santander Customer Predictions (Kaggle)](#sec-1)
-  - [Competition/Task Description](#sec-1-1)
-  - [Brief Summary of My Exploration](#sec-1-2)
 
-# Santander Customer Predictions (Kaggle)<a id="sec-1"></a>
+# Santander Customer Transaction Predictions (Kaggle)
 
-## Competition/Task Description<a id="sec-1-1"></a>
+A brief exploration of the [Kaggle: Santander Customer Transaction Predictions](https://www.kaggle.com/c/santander-customer-transaction-prediction/overview) competition.
 
-The competition main page is [Kaggle: Santander Customer Transaction Predictions](https://www.kaggle.com/c/santander-customer-transaction-prediction/overview)
+
+# Table of Contents
+
+1.  [Competition Description](#orgb9f408c)
+2.  [The Data](#org14d24e9)
+3.  [Brief Summary of My Exploration](#org6b9c94c)
+
+# Competition Description
 
 We are told:
 
 "In this challenge, we invite Kagglers to help us identify which customers will make a specific transaction in the future, irrespective of the amount of money transacted. The data provided for this competition has the same structure as the real data we have available to solve this problem."
 
-We are provided with an anonymized dataset containing numeric feature variables, the binary target column, and a string ID<sub>code</sub> column. The task is to predict the value of target column in the test set, evaluated on auc.
+# The Data
 
-## Brief Summary of My Exploration<a id="sec-1-2"></a>
+-   200 anonymous numeric features
+-   Binary target
+-   Model to be evaluated on auc
 
-I was initially intrigued by this competition as I was looking to do something quick with little data preprocessing and short training times. The data for this competition was also
+# Brief Summary of My Exploration
+
+I was intrigued by this competition as I was looking to work on a project with short training times and low preprocessing barriers. I also found the 200 anonymous numeric feature data unique and thus an intriguing puzzle.
