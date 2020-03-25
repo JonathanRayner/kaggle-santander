@@ -9,9 +9,6 @@ A brief exploration of the [[https://www.kaggle.com/c/santander-customer-transac
 - [[#brief-summary-of-my-exploration][Brief Summary of My Exploration]]
 - [[#files-in-this-repository][Files in this Repository]]
   - [[#auxiliary_functionspy][auxiliary_functions.py]]
-    - [[#function-1][Function 1]]
-    - [[#function-2][Function 2]]
-    - [[#function-3][Function 3]]
   - [[#nnpy][nn.py]]
   - [[#cnnpy][cnn.py]]
   - [[#lgbmpy][lgbm.py]]
@@ -55,15 +52,15 @@ I wondered if I could still score above 0.90 auc, but without the data leakage (
 
 Contains functions for feature engineering and preprocessing.
 
-*** Function 1
+- Function 1
 
 description
 
-*** Function 2
+- Function 2
 
 description
 
-*** Function 3
+- Function 3
 
 description
 
