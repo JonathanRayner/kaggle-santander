@@ -1,13 +1,16 @@
 # title shouldn't appear in toc
 * Santander Customer Transaction Predictions (Kaggle) :noexport:
 
+#+BEGIN_QUOTE
 A brief exploration of the [[https://www.kaggle.com/c/santander-customer-transaction-prediction/overview][Kaggle: Santander Customer Transaction Predictions]] competition.
+#+END_QUOTE
 
-# insert the toc here
-* Contents :TOC:
+* Contents :TOC::QUOTE:
+#+BEGIN_QUOTE
 - [[#competition-description][Competition Description]]
 - [[#the-data][The Data]]
 - [[#brief-summary-of-my-exploration][Brief Summary of My Exploration]]
+#+END_QUOTE
 
 * Competition Description
 
