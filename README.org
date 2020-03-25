@@ -1,9 +1,7 @@
 # title shouldn't appear in toc
 * Santander Customer Transaction Predictions (Kaggle) :noexport:
 
-#+BEGIN_QUOTE
 A brief exploration of the [[https://www.kaggle.com/c/santander-customer-transaction-prediction/overview][Kaggle: Santander Customer Transaction Predictions]] competition.
-#+END_QUOTE
 
 * Contents :TOC::QUOTE:
 #+BEGIN_QUOTE
@@ -32,8 +30,38 @@ The repeated values hint that perhaps these features have some categorical natur
 
 I was intrigued by this (already closed) competition as I was looking for some practice on a project with short training times and low preprocessing barriers. I also found the 200 anonymous numeric feature data to be quite unique and thus an intriguing puzzle.
 
-With little hyperparameter tuning and no preprocessing, [[https://lightgbm.readthedocs.io][LightGBM]] and simple neural network models with a few hidden layers can score 0.90 auc or slightly lower. 
+With little hyperparameter tuning and no preprocessing, [[https://lightgbm.readthedocs.io][LightGBM]] and simple neural network models with a few hidden layers can score 0.90 auc or slightly lower. The [[https://www.kaggle.com/c/santander-customer-transaction-prediction/leaderboard][competition (private) leaderboard]] lists 0.92573 as 1st place. 
 
-The [[https://www.kaggle.com/c/santander-customer-transaction-prediction/leaderboard][competition (private) leaderboard]] lists 0.92573 as 1st place. Experimenting with different architectures and hyperparameters suggested lead to little progress, so the conclusion was that I needed to do some feature engineering, 
+Experimenting with different architectures and hyperparameters lead to little progress, so the conclusion was that I needed to do some feature engineering. Many many experiments lead to no changes in auc. 
 
+At this point I checked the competition discussion board and winning solutions and learned that a form of data leakage was used to score above 0.90 auc on this competition. All models did the following:
+
+- Noticed fake (repeated entries) in supplied test set, deleted this.
+- Created 200 new features counting the number of times an entry appears in both train + test
+
+I wondered if I could still score above 0.90 auc, but without the data leakage (ie. create new features that encode the fact that there are many repeated values in this data, but create these features only from train and not from train + test). The tl;dr is no, I couldn't convincingly break 0.90 auc without data leakage.
+
+* Files in this Repository
+
+** auxiliary_functions.py
+
+Contains functions for feature engineering and preprocessing.
+
+*** Function 1
+
+description
+
+*** Function 2
+
+description
+
+*** Function 3
+
+description
+
+** nn.py
+
+** cnn.py 
+
+** lgbm.py
 
