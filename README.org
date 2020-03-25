@@ -3,18 +3,26 @@
 
 A brief exploration of the [[https://www.kaggle.com/c/santander-customer-transaction-prediction/overview][Kaggle: Santander Customer Transaction Predictions]] competition.
 
-* Contents :TOC::QUOTE:
-#+BEGIN_QUOTE
+* Contents :TOC:
 - [[#competition-description][Competition Description]]
 - [[#the-data][The Data]]
 - [[#brief-summary-of-my-exploration][Brief Summary of My Exploration]]
-#+END_QUOTE
+- [[#files-in-this-repository][Files in this Repository]]
+  - [[#auxiliary_functionspy][auxiliary_functions.py]]
+    - [[#function-1][Function 1]]
+    - [[#function-2][Function 2]]
+    - [[#function-3][Function 3]]
+  - [[#nnpy][nn.py]]
+  - [[#cnnpy][cnn.py]]
+  - [[#lgbmpy][lgbm.py]]
 
 * Competition Description
 
 We are told:
 
-"In this challenge, we invite Kagglers to help us identify which customers will make a specific transaction in the future, irrespective of the amount of money transacted. The data provided for this competition has the same structure as the real data we have available to solve this problem."
+#+BEGIN_QUOTE
+In this challenge, we invite Kagglers to help us identify which customers will make a specific transaction in the future, irrespective of the amount of money transacted. The data provided for this competition has the same structure as the real data we have available to solve this problem.
+#+END_QUOTE
 
 * The Data
 
@@ -34,10 +42,10 @@ With little hyperparameter tuning and no preprocessing, [[https://lightgbm.readt
 
 Experimenting with different architectures and hyperparameters lead to little progress, so the conclusion was that I needed to do some feature engineering. Many many experiments lead to no changes in auc. 
 
-At this point I checked the competition discussion board and winning solutions and learned that a form of data leakage was used to score above 0.90 auc on this competition. All models did the following:
+At this point I checked the [[https://www.kaggle.com/c/santander-customer-transaction-prediction/discussion][competition discussion board]] and [[https://www.kaggle.com/c/santander-customer-transaction-prediction/discussion/88926][winning solutions]] and learned that a form of data leakage was used to score above 0.90 auc on this competition. All models did the following:
 
-- Noticed fake (repeated entries) in supplied test set, deleted this.
-- Created 200 new features counting the number of times an entry appears in both train + test
+- Deleted fake (repeated entries) in supplied test set.
+- Created 200 new features counting the total number of times an entry appears in train + test.
 
 I wondered if I could still score above 0.90 auc, but without the data leakage (ie. create new features that encode the fact that there are many repeated values in this data, but create these features only from train and not from train + test). The tl;dr is no, I couldn't convincingly break 0.90 auc without data leakage.
 
@@ -64,4 +72,5 @@ description
 ** cnn.py 
 
 ** lgbm.py
+
 
