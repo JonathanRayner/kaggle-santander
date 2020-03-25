@@ -1,16 +1,13 @@
-# turn off toc so we can place it after the title
-#+OPTIONS: toc:nil
-
-# Title shouldn't appear in toc
-* Santander Customer Transaction Predictions (Kaggle) 
-:PROPERTIES:
-:UNNUMBERED: notoc
-:END:
+# title shouldn't appear in toc
+* Santander Customer Transaction Predictions (Kaggle) :noexport:
 
 A brief exploration of the [[https://www.kaggle.com/c/santander-customer-transaction-prediction/overview][Kaggle: Santander Customer Transaction Predictions]] competition.
 
 # insert the toc here
-#+TOC: headlines
+* Contents :TOC:
+- [[#competition-description][Competition Description]]
+- [[#the-data][The Data]]
+- [[#brief-summary-of-my-exploration][Brief Summary of My Exploration]]
 
 * Competition Description
 
@@ -36,6 +33,4 @@ With little hyperparameter tuning and no preprocessing, [[https://lightgbm.readt
 
 The [[https://www.kaggle.com/c/santander-customer-transaction-prediction/leaderboard][competition (private) leaderboard]] lists 0.92573 as 1st place. Experimenting with different architectures and hyperparameters suggested lead to little progress, so the conclusion was that I needed to do some feature engineering, 
 
-
-* Files in this repository
 
