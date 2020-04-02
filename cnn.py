@@ -66,6 +66,14 @@ validation_labels = np.array(validation_labels)
 train = pair_features(train)
 validation = pair_features(validation)
 
+# Conv net needs (amount of data, height, width, channels) format. Here channels = 1
+def conv_reshape(data):
+    data_reshape = data.reshape(data.shape[0], data.shape[1], data.shape[2], 1)
+    return data_reshape
+
+train = conv_reshape(train)
+validation = conv_reshape(validation)
+
 METRICS = [
     keras.metrics.TruePositives(name='tp'),
     keras.metrics.FalsePositives(name='fp'),
@@ -78,8 +86,8 @@ METRICS = [
 ]
 
 N_TRAIN = train.shape[0]
-BATCH_SIZE = 512
-EPOCHS = 50
+BATCH_SIZE = 256
+EPOCHS = 40
 STEPS_PER_EPOCH = N_TRAIN//BATCH_SIZE
 
 def optimizer():
@@ -88,30 +96,33 @@ def optimizer():
 # whole dataset decimals = 1 seems best, 2, 3 also good. decimals = 1 on whole dataset seems best out of all per column and whole dataset options
 # per column, decimals = 3 auc 0.8996 architecture. decimals 3 seems to perform slightly better than decimals = 4
 # staircase scheduler
-learning_rates = [0.001]*40 + [0.0005]*5 + [0.0001]*5
+learning_rates = [0.001]*20 + [0.0005]*10 + [0.0001]*10
 lr_schedule_staircase = tf.keras.callbacks.LearningRateScheduler(lambda epoch: learning_rates[epoch], verbose=1)
 
-# model architecture
 def make_model(train_features, metrics=METRICS):
     model = keras.Sequential([
-        # Note input shape (200, 2) when we pair features with frequency features
-        keras.layers.Dense(256,
-                           kernel_regularizer=keras.regularizers.l2(0.0001),
-                           activation='relu',
-                           input_shape=(train_features.shape[1], train_features.shape[2])),
+        # Note input shape (200, 2, 1) when we pair features with frequency features
+        keras.layers.Conv2D(256, (1,2), kernel_regularizer=keras.regularizers.l2(0.0001), activation='relu',
+                           input_shape=(train_features.shape[1], train_features.shape[2],1)),
         keras.layers.Dropout(0.3),
-        keras.layers.Dense(256, kernel_regularizer=keras.regularizers.l2(0.0001),
-                           activation='relu'),
-        keras.layers.Dropout(0.3),
-        keras.layers.Dense(256, kernel_regularizer=keras.regularizers.l2(0.0001),
-                           activation='relu'),
-        keras.layers.Dropout(0.3),
+        keras.layers.BatchNormalization(),
+        # No Pooling layers needed, because already as small as can be
         keras.layers.Dense(256, kernel_regularizer=keras.regularizers.l2(0.0001),
                      activation='relu'),
         keras.layers.Dropout(0.3),
+        keras.layers.BatchNormalization(),
         keras.layers.Dense(256, kernel_regularizer=keras.regularizers.l2(0.0001),
                      activation='relu'),
         keras.layers.Dropout(0.3),
+        keras.layers.BatchNormalization(),
+        keras.layers.Dense(256, kernel_regularizer=keras.regularizers.l2(0.0001),
+                     activation='relu'),
+        keras.layers.Dropout(0.3),
+        keras.layers.BatchNormalization(),
+        keras.layers.Dense(256, kernel_regularizer=keras.regularizers.l2(0.0001),
+                     activation='relu'),
+        keras.layers.Dropout(0.3),
+        keras.layers.BatchNormalization(),
         keras.layers.Flatten(),
         keras.layers.Dense(1, activation='sigmoid')
         ])

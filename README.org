@@ -8,10 +8,11 @@ A brief exploration of the [[https://www.kaggle.com/c/santander-customer-transac
 - [[#the-data][The Data]]
 - [[#brief-summary-of-my-exploration][Brief Summary of My Exploration]]
 - [[#files-in-this-repository][Files in this Repository]]
-  - [[#auxiliary_functionspy][auxiliary_functions.py]]
+  - [[#toolspy][tools.py]]
   - [[#nnpy][nn.py]]
   - [[#cnnpy][cnn.py]]
   - [[#lgbmpy][lgbm.py]]
+  - [[#rough_workorg][rough_work.org]]
 
 * Competition Description
 
@@ -23,8 +24,11 @@ In this challenge, we invite Kagglers to help us identify which customers will m
 
 * The Data
 
+Available [[https://www.kaggle.com/c/santander-customer-transaction-prediction/data][here]]. 
+
 - 200 anonymous numeric features
 - Binary target
+- Imbalanced classes (~10% of the data in the minority class)
 - Model to be evaluated on auc 
 - No missing values
 - Many repeated values
@@ -37,37 +41,57 @@ I was intrigued by this (already closed) competition as I was looking for some p
 
 With little hyperparameter tuning and no preprocessing, [[https://lightgbm.readthedocs.io][LightGBM]] and simple neural network models with a few hidden layers can score 0.90 auc or slightly lower. The [[https://www.kaggle.com/c/santander-customer-transaction-prediction/leaderboard][competition (private) leaderboard]] lists 0.92573 as 1st place. 
 
-Experimenting with different architectures and hyperparameters lead to little progress, so the conclusion was that I needed to do some feature engineering. Many many experiments lead to no changes in auc. 
+Experimenting with different architectures and hyperparameters lead to little progress, so the conclusion was that I needed to do some feature engineering. Many experiments lead to no significant changes in auc. 
 
 At this point I checked the [[https://www.kaggle.com/c/santander-customer-transaction-prediction/discussion][competition discussion board]] and [[https://www.kaggle.com/c/santander-customer-transaction-prediction/discussion/88926][winning solutions]] and learned that a form of data leakage was used to score above 0.90 auc on this competition. All models did the following:
 
 - Deleted fake (repeated entries) in supplied test set.
 - Created 200 new features counting the total number of times an entry appears in train + test.
 
-I wondered if I could still score above 0.90 auc, but without the data leakage (ie. create new features that encode the fact that there are many repeated values in this data, but create these features only from train and not from train + test). The tl;dr is no, I couldn't convincingly break 0.90 auc without data leakage.
+I wondered if I could score above 0.90 auc using similar ideas, but without using data leakage (ie. create new features that encode the fact that there are many repeated values in this data, but create these features only from train and not from train + test). The tl;dr is no, I couldn't convincingly break 0.90 auc using this idea + no data leakage.
 
 * Files in this Repository
 
-** auxiliary_functions.py
+** tools.py
 
-Contains functions for feature engineering and preprocessing.
+Tools for feature engineering and preprocessing.
 
-- Function 1
+- FrequencyFeatures
 
-description
+Class to map dataframe entries to the frequency of those entries in the training data. Frequencies are normalized so that maximum frequency = 1. Uses the sklearn convention of fit and transform methods. Works on unseen values by interpolating missing values in the frequency distribution.
 
-- Function 2
+- FrequencyFeaturesPerColumn
 
-description
+Same concept as the FrequencyFeatures class, except a separate frequency distribution is used for each feature. Seems to perform worse than fitting to the frequency distribution of the whole dataset.
 
-- Function 3
+- BinAndOneHot
+  
+Class to bin features and create new one-hot features using the sklearn convention of fit and transform methods. Unused in final models.
 
-description
+- change_class_balance
+
+Function to oversample minority class and undersample majority class as needed. Unused in final models.
+
+- pair_features
+
+Function to pair frequency features with original features they were generated from, as (?, 2) arrays, for use in neural networks.
+
+- plot_metrics
+
+Function to plot loss, auc, precision, recall for train and validation from a tensorflow model and save to file 'metrics.png'. 
 
 ** nn.py
 
+Neural network in tensorflow, training on raw 200 features + 200 frequency features. 5 Dense layers with 256 nodes per layer, l2 regularization, dropout, and staircase learning rate schedule. Scores roughly 0.895-0.90 auc
+
 ** cnn.py 
+
+Speculative idea to replace the first layer in nn.py with a convolutional layer with filters of shape (1,2). The idea here is that we don't expect any relationship between the 200 original features (other investigations show that they are independent), but when paired as (200,2) arrays with their corresponding frequency features, there may be something convolutional filters could learn about the pairing. Answer: no improvement on auc over nn.py.
 
 ** lgbm.py
 
+LightGBM with some reasonable hyperparameters to train on the raw 200 features + 200 frequency features. Scores roughly 0.895-0.905 auc.
 
+** rough_work.org
+
+My exploratory work. No effort has been made on formatting or cleaning up.

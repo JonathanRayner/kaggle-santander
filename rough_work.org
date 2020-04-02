@@ -7,7 +7,6 @@ We are told:
 
 We are provided with an anonymized dataset containing numeric feature variables, the binary target column, and a string ID_code column. The task is to predict the value of target column in the test set.
 
-I liked this as a toy model competition because the task and data are relatively simple, but the description of the data is quite lacking, so I have to think.
 * Preprocessing
 ** Import data and modules, split into train/test/validation  
 Import the data. At this stage, we don't even import the unlabelled test data used for the competition, because we need labels to evaluate our model. So instead we'll split our training data as train/validation/test.
@@ -1600,7 +1599,8 @@ plt.close
 #+RESULTS:
 [[file:feature_importance.png]]
 
-* TODO Feature Engineering
+* DONE Feature Engineering
+CLOSED: [2020-03-26 Thu 17:39]
 ** Bin and One-hot encoding 
 
 Edit: the features created here are probably more useful in a NN model or input as categorical features. Standard decision trees don't seem to perform well with one-hot encoding and if one-hot features are concatenated with the original features, the original features dominate because of how decision trees work, not necessarily anything wrong with this particular dataset. 
@@ -22283,11 +22283,16 @@ predictions = np.multiply(predictions_original, predictions_nn)
 
 print(roc_auc_score(test_labels, predictions))
 
-* TODO Things I will do before calling project end
-** TODO Latest NN with augmentation vs. with no augmentation
-** TODO Latest NN + stat features
-** TODO Plot NN ROC, LightGBM ROC, Light GBM precision, recall, loss, confusion matrix
-** TODO NN to combine model predictions on validation of NN + Lightgbm, validated against test. Possible feature engineering: max, min, multiply, different weighted means, monomial combinations
+* DONE Things I will do before calling project end
+CLOSED: [2020-03-26 Thu 17:39]
+** DONE Latest NN with augmentation vs. with no augmentation
+CLOSED: [2020-03-26 Thu 17:40]
+** DONE Latest NN + stat features
+CLOSED: [2020-03-26 Thu 17:40]
+** DONE Plot NN ROC, LightGBM ROC, Light GBM precision, recall, loss, confusion matrix
+CLOSED: [2020-03-26 Thu 17:40]
+** DONE NN to combine model predictions on validation of NN + Lightgbm, validated against test. Possible feature engineering: max, min, multiply, different weighted means, monomial combinations
+CLOSED: [2020-03-26 Thu 17:40]
 * Kaggle submissions 
 ** LightGBM baseline
 
