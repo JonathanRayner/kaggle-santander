@@ -41,7 +41,7 @@ I was intrigued by this (already closed) competition as I was looking for some p
 
 With little hyperparameter tuning and no preprocessing, [[https://lightgbm.readthedocs.io][LightGBM]] and simple neural network models with a few hidden layers can score 0.90 auc or slightly lower. The [[https://www.kaggle.com/c/santander-customer-transaction-prediction/leaderboard][competition (private) leaderboard]] lists 0.92573 as 1st place. 
 
-Experimenting with different architectures and hyperparameters lead to little progress, so the conclusion was that I needed to do some feature engineering. Many experiments lead to no significant changes in auc. 
+Experimenting with different architectures, hyperparameters, and class balancing lead to little progress, so the conclusion was that I needed to do some feature engineering. Many experiments lead to no significant changes in auc. 
 
 At this point I checked the [[https://www.kaggle.com/c/santander-customer-transaction-prediction/discussion][competition discussion board]] and [[https://www.kaggle.com/c/santander-customer-transaction-prediction/discussion/88926][winning solutions]] and learned that a form of data leakage was used to score above 0.90 auc on this competition. All models did the following:
 
