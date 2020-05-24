@@ -48,7 +48,7 @@ At this point I checked the [[https://www.kaggle.com/c/santander-customer-transa
 - Deleted fake (repeated entries) in supplied test set.
 - Created 200 new features counting the total number of times an entry appears in train + test.
 
-I wondered if I could score above 0.90 auc using similar ideas, but without using data leakage (ie. create new features that encode the fact that there are many repeated values in this data, but create these features only from train and not from train + test). The tl;dr is no, I couldn't convincingly break 0.90 auc using this idea + no data leakage. Typical results (no major difference in results using Neural Nets or LightGBM) are shown below:
+I wondered if I could score above 0.90 auc using similar ideas, but without using data leakage (ie. create new features that encode the fact that there are many repeated values in this data, but create these features only from train and not from train + test). The tl;dr is no, I couldn't convincingly break 0.90 auc using this idea + no data leakage. Representative results are shown below (no major difference in results between using Neural Nets or LightGBM):
 
 [[metrics.png]]
 
